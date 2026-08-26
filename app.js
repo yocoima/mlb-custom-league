@@ -99,16 +99,32 @@ async function fetchHistoryPage(username,platform,page){
 }
 async function fetchGameLog(id,username,platform){ return fetchJson(apiUrl("game-log",{id:String(id),username,platform})); }
 
-async function fetchAllHistory(username,platform,maxPages,onProgress=()=>{}){
-  const rows=[]; let totalPages=maxPages;
-  for(let page=1;page<=Math.min(totalPages,maxPages);page++){
-    onProgress(page,totalPages);
-    const payload=await fetchHistoryPage(username,platform,page);
-    rows.push(...historyRows(payload));
-    const reported=Number(payload?.total_pages);
-    if(Number.isFinite(reported)&&reported>0) totalPages=Math.min(reported,maxPages);
-    if(!historyRows(payload).length) break;
+async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}) {
+  const rows = [];
+  let totalPages = maxPages;
+
+  for (let page = 1; page <= Math.min(totalPages, maxPages); page++) {
+    const payload = await fetchHistoryPage(username, platform, page);
+
+    const pageRows = historyRows(payload);
+
+    rows.push(...pageRows);
+
+    const reported = Number(payload?.total_pages);
+
+    if (Number.isFinite(reported) && reported > 0) {
+      totalPages = Math.min(reported, maxPages);
+    }
+
+    const leagueFound = rows.filter(isLeagueRow).length;
+
+    onProgress(page, totalPages, rows.length, leagueFound);
+
+    if (!pageRows.length) {
+      break;
+    }
   }
+
   return rows;
 }
 
@@ -124,8 +140,12 @@ function overrideFor(name){
 async function resolveOpponentIdentity(displayName, gameId, preferredPlatform) {
   const manual = overrideFor(displayName);
 
-  if (manual?.username && PLATFORM_VALUES.includes(manual.platform)) {
-    return { ...manual, method: "manual" };
+  if (manual?.username) {
+    return {
+      username: manual.username,
+      platform: "psn",
+      method: "manual"
+    };
   }
 
   const username = cleanDisplayName(displayName);
@@ -134,54 +154,11 @@ async function resolveOpponentIdentity(displayName, gameId, preferredPlatform) {
     return null;
   }
 
-  const candidates = [preferredPlatform, ...PLATFORM_VALUES]
-    .filter((x, i, a) => a.indexOf(x) === i);
-
-  // Buscamos el partido conocido en el historial del rival.
-  // Si aparece, sabemos que username + plataforma son correctos.
-  const MAX_LOOKUP_PAGES = 10;
-
-  for (const platform of candidates) {
-    try {
-      setStatus(`Buscando ${username} en ${platform.toUpperCase()}…`);
-
-      const firstPayload = await fetchHistoryPage(username, platform, 1);
-      const firstRows = historyRows(firstPayload);
-
-      if (firstRows.some(row => String(row.id) === String(gameId))) {
-        return {
-          username,
-          platform,
-          method: "history"
-        };
-      }
-
-      const reportedPages = Number(firstPayload?.total_pages) || 1;
-      const pagesToCheck = Math.min(reportedPages, MAX_LOOKUP_PAGES);
-
-      for (let page = 2; page <= pagesToCheck; page++) {
-        const payload = await fetchHistoryPage(username, platform, page);
-        const rows = historyRows(payload);
-
-        if (rows.some(row => String(row.id) === String(gameId))) {
-          return {
-            username,
-            platform,
-            method: "history"
-          };
-        }
-
-        if (!rows.length) break;
-      }
-    } catch (error) {
-      // Probamos la siguiente plataforma.
-    }
-  }
-
+  // Todos los participantes de esta liga son PSN.
   return {
     username,
-    platform: null,
-    method: "unresolved"
+    platform: "psn",
+    method: "league-default"
   };
 }
 
@@ -246,7 +223,18 @@ async function discoverLeague(){
     const p=state.participants.get(key); if(!p?.platform){processed.add(key);continue;}
     setStatus(`Leyendo historial de ${p.username} (${p.team})…`);
     let rows;
-    try{ rows=await fetchAllHistory(p.username,p.platform,cfg.maxPages,(page,total)=>setStatus(`${p.username}: página ${page}/${total} · ${state.games.size} partidos detectados`)); }
+    try {
+  rows = await fetchAllHistory(
+    p.username,
+    p.platform,
+    cfg.maxPages,
+    (page, total, downloaded, leagueFound) => {
+      setStatus(
+        `${p.username}: página ${page}/${total} · ${downloaded} juegos revisados · ${leagueFound} LEAGUE encontrados`
+      );
+    }
+  );
+}
     catch(e){ warn(`No pude leer el historial de ${p.username} (${p.platform}): ${e.message}`); processed.add(key); continue; }
 
     for(const row of rows.filter(isLeagueRow)){
