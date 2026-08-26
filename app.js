@@ -17,7 +17,7 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.2.0";
+} from "./src/league-core.js?v=3.2.1";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -257,6 +257,7 @@ async function discoverLeague(){
   for(const participant of roster.values())addParticipant(participant);
   const candidateGroups=new Map();
   let seedFound=!cfg.seedGameId;
+  let seedSeenInHistory=!cfg.seedGameId;
 
   for(const participant of roster.values()){
     setStatus(`Leyendo historial de ${participant.username} (${participant.team})…`);
@@ -270,6 +271,7 @@ async function discoverLeague(){
       continue;
     }
     for(const row of rows){
+      if(String(row?.id??row?.game_id??row?.gameId??"")===String(cfg.seedGameId))seedSeenInHistory=true;
       const candidate=canonicalCandidate(row,participant,roster);
       if(!candidate)continue;
       if(String(candidate.game.id)===String(cfg.seedGameId))seedFound=true;
@@ -280,8 +282,12 @@ async function discoverLeague(){
     render();
   }
 
-  if(!seedFound)throw new Error("El Game ID semilla no pertenece al roster, fecha o equipos configurados.");
   if(!candidateGroups.size)throw new Error("No se encontraron partidos que coincidan con el roster y la fecha inicial.");
+  if(!seedFound){
+    warn(seedSeenInHistory
+      ? "El Game ID semilla apareció en el historial, pero no coincidió con el roster, la fecha o los equipos configurados. Se continuará porque esta validación es opcional."
+      : "El Game ID semilla no apareció en los historiales consultados. Se continuará porque esta validación es opcional.");
+  }
 
   let checked=0;
   let failedLogs=0;
