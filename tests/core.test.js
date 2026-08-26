@@ -4,6 +4,7 @@ import {
   cleanDisplayName,isLeagueRow,normalizeHistoryGame,opponentFromGame,participantTeamFromGame,
   showDateKey,isOnOrAfterStartDate,gameFingerprint,
   scoreThroughInning,isCompatibleWithRegulationInnings,
+  isFormallyCompletedGame,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders
 } from "../src/league-core.js";
 
@@ -73,6 +74,15 @@ test("valida una liga de 5 innings sin excluir extra innings legítimos",()=>{
   assert.equal(isCompatibleWithRegulationInnings({innings:"4"},5),true);
 });
 
+test("excluye juegos interrumpidos o decididos por ruling",()=>{
+  const completed={ruling:"0",innings:"5",away_runs:"3",home_runs:"6",away_display_result:"L",home_display_result:"W"};
+  const interrupted={ruling:"6",innings:"3",away_runs:"3",home_runs:"2",away_display_result:"L",home_display_result:"W"};
+  const tied={ruling:"0",innings:"5",away_runs:"1",home_runs:"1",away_display_result:"L",home_display_result:"W"};
+  assert.equal(isFormallyCompletedGame(completed),true);
+  assert.equal(isFormallyCompletedGame(interrupted),false);
+  assert.equal(isFormallyCompletedGame(tied),false);
+});
+
 test("IP de béisbol se suma por outs",()=>{
   assert.equal(baseballIpToOuts("2.2"),8); assert.equal(baseballIpToOuts("0.1"),1); assert.equal(outsToBaseballIp(9),"3.0");
 });
@@ -87,4 +97,25 @@ test("acumula box score y recalcula OPS/ERA",()=>{
   assert.equal(battingLeaders(acc)[0].hr,1);
   assert.equal(pitchingLeaders(acc)[0].ip,"2.2");
   assert.equal(pitchingLeaders(acc)[0].era,0);
+});
+
+test("ordena líderes de bateo por cada categoría",()=>{
+  const acc=createStatAccumulator();
+  const base={manager:"Manager",team:"Tigers",g:1,r:0,bb:0,so:0,doubles:0,triples:0,hbp:0,sf:0,cs:0};
+  acc.batting.set("avg",{...base,name:"AVG",ab:4,h:3,hr:0,rbi:1,sb:0});
+  acc.batting.set("power",{...base,name:"POWER",ab:5,h:2,hr:2,rbi:4,sb:0});
+  acc.batting.set("speed",{...base,name:"SPEED",ab:6,h:4,hr:0,rbi:0,sb:3});
+  assert.equal(battingLeaders(acc,"avg")[0].name,"AVG");
+  assert.equal(battingLeaders(acc,"hr")[0].name,"POWER");
+  assert.equal(battingLeaders(acc,"h")[0].name,"SPEED");
+  assert.equal(battingLeaders(acc,"rbi")[0].name,"POWER");
+  assert.equal(battingLeaders(acc,"sb")[0].name,"SPEED");
+});
+
+test("ordena líderes de pitcheo por ponches",()=>{
+  const acc=createStatAccumulator();
+  const base={manager:"Manager",team:"Tigers",g:1,outs:15,h:2,r:1,er:1,bb:1,w:0,l:0,sv:0,bs:0,hold:0};
+  acc.pitching.set("one",{...base,name:"Pitcher A",so:4});
+  acc.pitching.set("two",{...base,name:"Pitcher B",so:8});
+  assert.equal(pitchingLeaders(acc,"so")[0].name,"Pitcher B");
 });

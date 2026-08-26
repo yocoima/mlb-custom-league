@@ -13,11 +13,12 @@ import {
   calculateStandings,
   gameParts,
   isCompatibleWithRegulationInnings,
+  isFormallyCompletedGame,
   createStatAccumulator,
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.2.1";
+} from "./src/league-core.js?v=3.3.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -292,6 +293,7 @@ async function discoverLeague(){
   let checked=0;
   let failedLogs=0;
   let excludedByInnings=0;
+  let excludedUnfinished=0;
   for(const [fingerprint,candidates] of candidateGroups){
     checked++;
     setStatus(`Validando partidos y UUID: ${checked}/${candidateGroups.size}…`);
@@ -310,6 +312,10 @@ async function discoverLeague(){
       continue;
     }
     if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")continue;
+    if(!isFormallyCompletedGame(lineScore)){
+      excludedUnfinished++;
+      continue;
+    }
     if(lineScore&&!isCompatibleWithRegulationInnings(lineScore,cfg.regulationInnings)){
       excludedByInnings++;
       continue;
@@ -338,6 +344,7 @@ async function discoverLeague(){
   }
 
   if(failedLogs)warn(`${failedLogs} partidos se omitieron porque Game Log no permitió validar UUID, identidad y entradas.`);
+  if(excludedUnfinished)warn(`${excludedUnfinished} partidos interrumpidos, empatados o decididos por ruling se excluyeron.`);
   if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas.`);
   if(!state.games.size) throw new Error("No se pudieron validar partidos pertenecientes a la liga configurada.");
   state.lastSync=new Date().toISOString(); saveState(); render();
@@ -385,11 +392,11 @@ function render(){
     return `<article class="game-card"><div><div><span class="manager">${esc(g.awayUser)}</span> · <strong>${esc(g.awayTeam)}</strong> <span class="muted">@</span> <span class="manager">${esc(g.homeUser)}</span> · <strong>${esc(g.homeTeam)}</strong></div><div class="meta">${esc(g.date||"Fecha no disponible")} · ${g.uuid?`UUID ${esc(g.uuid)}`:`ID ${esc(g.id)} (sin UUID)`}${g.pitcherInfo?` · ${esc(g.pitcherInfo)}`:""}${decision}</div></div><div class="score">${g.awayScore??"—"} — ${g.homeScore??"—"}${decidedEarly?"*":""}</div></article>`;
   }).join(""):`<div class="empty">Sin datos.</div>`;
 
-  const bat=battingLeaders(state.stats);
-  $("#battingBody").innerHTML=bat.length?bat.map(p=>`<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td>${p.g}</td><td>${p.ab}</td><td>${p.r}</td><td>${p.h}</td><td>${p.doubles}</td><td>${p.triples}</td><td>${p.hr}</td><td>${p.rbi}</td><td>${p.bb}</td><td>${p.so}</td><td>${fmt3(p.avg)}</td><td>${fmt3(p.obp)}</td><td>${fmt3(p.slg)}</td><td><strong>${fmt3(p.ops)}</strong></td></tr>`).join(""):`<tr><td colspan="16" class="empty">Carga los Game Logs para ver estadísticas.</td></tr>`;
+  const bat=battingLeaders(state.stats,$("#battingSort")?.value||"avg");
+  $("#battingBody").innerHTML=bat.length?bat.map((p,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td>${p.g}</td><td>${p.ab}</td><td>${p.r}</td><td>${p.h}</td><td>${p.doubles}</td><td>${p.triples}</td><td>${p.hr}</td><td>${p.rbi}</td><td>${p.bb}</td><td>${p.so}</td><td>${p.sb}</td><td>${fmt3(p.avg)}</td><td>${fmt3(p.obp)}</td><td>${fmt3(p.slg)}</td><td><strong>${fmt3(p.ops)}</strong></td></tr>`).join(""):`<tr><td colspan="18" class="empty">Carga los Game Logs para ver estadísticas.</td></tr>`;
 
-  const pit=pitchingLeaders(state.stats);
-  $("#pitchingBody").innerHTML=pit.length?pit.map(p=>`<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td>${p.g}</td><td>${p.ip}</td><td>${p.w}</td><td>${p.l}</td><td>${p.sv}</td><td>${p.h}</td><td>${p.er}</td><td>${p.bb}</td><td>${p.so}</td><td>${p.era.toFixed(2)}</td><td>${p.whip.toFixed(2)}</td><td>${p.k9.toFixed(2)}</td></tr>`).join(""):`<tr><td colspan="14" class="empty">Carga los Game Logs para ver estadísticas.</td></tr>`;
+  const pit=pitchingLeaders(state.stats,$("#pitchingSort")?.value||"so");
+  $("#pitchingBody").innerHTML=pit.length?pit.map((p,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td>${p.g}</td><td>${p.ip}</td><td>${p.w}</td><td>${p.l}</td><td>${p.sv}</td><td>${p.h}</td><td>${p.er}</td><td>${p.bb}</td><td>${p.so}</td><td>${p.era.toFixed(2)}</td><td>${p.whip.toFixed(2)}</td><td>${p.k9.toFixed(2)}</td></tr>`).join(""):`<tr><td colspan="15" class="empty">Carga los Game Logs para ver estadísticas.</td></tr>`;
 
   const participants=[...state.participants.values()].sort((a,b)=>a.username.localeCompare(b.username));
   $("#participantsBody").innerHTML=participants.length?participants.map(p=>`<tr><td><strong>${esc(p.username)}</strong></td><td><span class="platform-pill">psn</span></td><td><span class="team-pill">${esc(p.team)}</span></td><td><span class="status-pill ${p.playerId?"ok":"warn"}">${p.playerId?`verificado · ID ${esc(p.playerId)}`:"configurado · sin juegos"}</span></td><td>${esc(p.discoveredBy||"Roster configurado")}</td></tr>`).join(""):`<tr><td colspan="5" class="empty">Sin datos.</td></tr>`;
@@ -421,6 +428,8 @@ $("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig()
 $("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{$("#statsBtn").disabled=false}});
 $("#clearBtn").addEventListener("click",()=>{localStorage.removeItem(STATE_KEY);state.participants.clear();state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.warnings=[];render();setStatus("Datos locales eliminados.")});
 $("#historyFile").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;try{await importHistoryFile(f)}catch(err){setStatus(err.message,"error")}finally{e.target.value=""}});
+$("#battingSort").addEventListener("change",render);
+$("#pitchingSort").addEventListener("change",render);
 document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));btn.classList.add("active");$("#"+btn.dataset.tab).classList.add("active")}));
 
 loadState();fillForm();render();

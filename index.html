@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.2.1" />
+  <link rel="stylesheet" href="styles.css?v=3.3.0" />
 </head>
 <body>
   <header class="topbar">
@@ -55,18 +55,18 @@
     </section>
 
     <section id="batting" class="panel">
-      <div class="panel-head"><div><h2>Bateo</h2><p>Acumulado desde Box Score. AVG/OBP/SLG/OPS se recalculan con los totales cargados.</p></div></div>
+      <div class="panel-head"><div><h2>Líderes de bateo</h2><p>Acumulado desde Box Score. Selecciona la categoría para ordenar el ranking.</p></div><label class="sort-control">Ordenar por<select id="battingSort"><option value="avg">Promedio (AVG)</option><option value="hr">Jonrones (HR)</option><option value="h">Hits (H)</option><option value="rbi">Impulsadas (RBI)</option><option value="sb">Bases robadas (SB)</option><option value="ops">OPS</option></select></label></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Jugador</th><th>Manager</th><th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>SO</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th></tr></thead>
-        <tbody id="battingBody"><tr><td colspan="16" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
+        <thead><tr><th>#</th><th>Jugador</th><th>Manager</th><th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>SO</th><th>SB</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th></tr></thead>
+        <tbody id="battingBody"><tr><td colspan="18" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
       </table></div>
     </section>
 
     <section id="pitching" class="panel">
-      <div class="panel-head"><div><h2>Pitcheo</h2><p>IP se suma usando outs reales; ERA, WHIP y K/9 se recalculan.</p></div></div>
+      <div class="panel-head"><div><h2>Líderes de pitcheo</h2><p>El ranking inicial muestra los pitchers con más ponches.</p></div><label class="sort-control">Ordenar por<select id="pitchingSort"><option value="so">Ponches (SO)</option><option value="era">Efectividad (ERA)</option><option value="k9">Ponches por 9 (K/9)</option><option value="w">Victorias (W)</option><option value="sv">Salvados (SV)</option></select></label></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Pitcher</th><th>Manager</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>H</th><th>ER</th><th>BB</th><th>SO</th><th>ERA</th><th>WHIP</th><th>K/9</th></tr></thead>
-        <tbody id="pitchingBody"><tr><td colspan="14" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
+        <thead><tr><th>#</th><th>Pitcher</th><th>Manager</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>H</th><th>ER</th><th>BB</th><th>SO</th><th>ERA</th><th>WHIP</th><th>K/9</th></tr></thead>
+        <tbody id="pitchingBody"><tr><td colspan="15" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
       </table></div>
     </section>
 
@@ -112,12 +112,12 @@
       </form>
       <div class="info-box">
         <strong>Cómo identifica la liga</strong>
-        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. También valida las entradas reglamentarias: un juego más largo solo se acepta si estaba empatado al terminar la última entrada reglamentaria. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
+        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. Solo cuenta juegos terminados formalmente (<code>ruling = 0</code>) y valida las entradas reglamentarias: un juego más largo solo se acepta si estaba empatado al terminar la última entrada reglamentaria. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
       </div>
     </section>
   </main>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.2.1"></script>
+  <script type="module" src="app.js?v=3.3.0"></script>
 </body>
 </html>

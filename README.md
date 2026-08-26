@@ -14,6 +14,7 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - deduplica el mismo partido globalmente mediante `game_uuid`;
 - calcula standings: GP, W, L, PCT, RF, RA, DIFF y forma reciente;
 - carga `Game Log` bajo demanda para estadísticas de bateo y pitcheo;
+- ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
 - no utiliza cookies, contraseñas, inventario, programas, Diamond Dynasty ni Arena.
 
 ## Por qué se usa `mode=all`
@@ -28,8 +29,9 @@ La API pública no expone `league_id`, nombre de liga ni roster oficial. Para ev
 2. roster `usuario -> equipo MLB`;
 3. ambos jugadores deben pertenecer al roster;
 4. ambos deben usar el equipo asignado;
-5. un juego que supera las entradas reglamentarias debe haber estado empatado al finalizar la última de ellas;
-6. `player_id` verifica la identidad y `game_uuid` identifica el partido globalmente.
+5. el juego debe haber terminado formalmente: `ruling = 0`, marcador no empatado y resultado oficial `W/L`;
+6. un juego que supera las entradas reglamentarias debe haber estado empatado al finalizar la última de ellas;
+7. `player_id` verifica la identidad y `game_uuid` identifica el partido globalmente.
 
 El Game ID semilla es una validación opcional: si se indica, debe aparecer dentro de la liga configurada. Si dos ligas comparten exactamente participantes, equipos y fechas, la API pública no permite distinguirlas automáticamente.
 

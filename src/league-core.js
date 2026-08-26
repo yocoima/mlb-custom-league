@@ -225,6 +225,21 @@ export function isCompatibleWithRegulationInnings(lineScore, regulationInnings) 
   return homeAtRegulation === awayAtRegulation;
 }
 
+export function isFormallyCompletedGame(lineScore) {
+  if (!lineScore) return false;
+  const ruling = Math.trunc(toNumber(lineScore.ruling, 0) ?? 0);
+  if (ruling !== 0) return false;
+
+  const homeResult = cleanDisplayName(lineScore.home_display_result).toUpperCase();
+  const awayResult = cleanDisplayName(lineScore.away_display_result).toUpperCase();
+  const hasWinnerAndLoser =
+    (homeResult === "W" && awayResult === "L") ||
+    (homeResult === "L" && awayResult === "W");
+  const homeRuns = toNumber(lineScore.home_runs);
+  const awayRuns = toNumber(lineScore.away_runs);
+  return hasWinnerAndLoser && homeRuns !== null && awayRuns !== null && homeRuns !== awayRuns;
+}
+
 export function baseballIpToOuts(value) {
   if (value === null || value === undefined || value === "") return 0;
   const text = String(value).trim();
@@ -317,19 +332,29 @@ export function addGameStats(acc, game, payload) {
   acc.loadedGameIds.add(game.id);
 }
 
-export function battingLeaders(acc) {
-  return [...acc.batting.values()].map(p => {
+export function battingLeaders(acc, sortBy = "avg") {
+  const players = [...acc.batting.values()].map(p => {
     const avg = p.ab ? p.h / p.ab : 0;
     const obpDen = p.ab + p.bb + p.hbp + p.sf;
     const obp = obpDen ? (p.h + p.bb + p.hbp) / obpDen : 0;
     const tb = (p.h - p.doubles - p.triples - p.hr) + 2*p.doubles + 3*p.triples + 4*p.hr;
     const slg = p.ab ? tb / p.ab : 0;
     return { ...p, avg, obp, slg, ops: obp + slg };
-  }).sort((a, b) => b.ops - a.ops || b.h - a.h || a.name.localeCompare(b.name));
+  });
+  const comparisons = {
+    avg: (a, b) => b.avg - a.avg || b.h - a.h || b.ab - a.ab,
+    hr: (a, b) => b.hr - a.hr || b.rbi - a.rbi || b.h - a.h,
+    h: (a, b) => b.h - a.h || b.avg - a.avg || b.hr - a.hr,
+    rbi: (a, b) => b.rbi - a.rbi || b.hr - a.hr || b.h - a.h,
+    sb: (a, b) => b.sb - a.sb || a.cs - b.cs || b.h - a.h,
+    ops: (a, b) => b.ops - a.ops || b.h - a.h || b.hr - a.hr
+  };
+  const compare = comparisons[sortBy] ?? comparisons.avg;
+  return players.sort((a, b) => compare(a, b) || a.name.localeCompare(b.name));
 }
 
-export function pitchingLeaders(acc) {
-  return [...acc.pitching.values()].map(p => {
+export function pitchingLeaders(acc, sortBy = "so") {
+  const pitchers = [...acc.pitching.values()].map(p => {
     const innings = p.outs / 3;
     return {
       ...p,
@@ -338,5 +363,14 @@ export function pitchingLeaders(acc) {
       whip: innings ? (p.bb + p.h) / innings : 0,
       k9: innings ? (p.so * 9) / innings : 0
     };
-  }).sort((a, b) => a.era - b.era || b.so - a.so || a.name.localeCompare(b.name));
+  });
+  const comparisons = {
+    so: (a, b) => b.so - a.so || b.k9 - a.k9 || b.outs - a.outs,
+    era: (a, b) => a.era - b.era || b.outs - a.outs || b.so - a.so,
+    k9: (a, b) => b.k9 - a.k9 || b.so - a.so || b.outs - a.outs,
+    w: (a, b) => b.w - a.w || a.era - b.era || b.so - a.so,
+    sv: (a, b) => b.sv - a.sv || a.era - b.era || b.so - a.so
+  };
+  const compare = comparisons[sortBy] ?? comparisons.so;
+  return pitchers.sort((a, b) => compare(a, b) || a.name.localeCompare(b.name));
 }
