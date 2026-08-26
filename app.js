@@ -16,7 +16,7 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.1.0";
+} from "./src/league-core.js?v=3.1.2";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -308,7 +308,10 @@ async function discoverLeague(){
       sourceUser:usedCandidate.record.username,
       sourcePlatform:"psn",
       homePlayerId:lineScore?.home_player_id?String(lineScore.home_player_id):null,
-      awayPlayerId:lineScore?.away_player_id?String(lineScore.away_player_id):null
+      awayPlayerId:lineScore?.away_player_id?String(lineScore.away_player_id):null,
+      homeResult:cleanDisplayName(lineScore?.home_display_result||usedCandidate.game.homeResult).toUpperCase(),
+      awayResult:cleanDisplayName(lineScore?.away_display_result||usedCandidate.game.awayResult).toUpperCase(),
+      ruling:cleanDisplayName(lineScore?.ruling||usedCandidate.game.ruling||"0")
     };
     if(lineScore&&!bindParticipantIds(game,lineScore))continue;
     if(!lineScore)failedLogs++;
@@ -357,7 +360,12 @@ function render(){
 
   $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(r.user)}</strong></td><td><span class="team-pill">${esc(r.team)}</span></td><td>${r.gp}</td><td>${r.w}</td><td>${r.l}</td><td>${fmt3(r.pct)}</td><td>${r.rf}</td><td>${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td>${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="11" class="empty">Sin datos.</td></tr>`;
 
-  $("#gamesList").innerHTML=games.length?games.map(g=>`<article class="game-card"><div><div><span class="manager">${esc(g.awayUser)}</span> · <strong>${esc(g.awayTeam)}</strong> <span class="muted">@</span> <span class="manager">${esc(g.homeUser)}</span> · <strong>${esc(g.homeTeam)}</strong></div><div class="meta">${esc(g.date||"Fecha no disponible")} · ${g.uuid?`UUID ${esc(g.uuid)}`:`ID ${esc(g.id)} (sin UUID)`}${g.pitcherInfo?` · ${esc(g.pitcherInfo)}`:""}</div></div><div class="score">${g.awayScore??"—"} — ${g.homeScore??"—"}</div></article>`).join(""):`<div class="empty">Sin datos.</div>`;
+  $("#gamesList").innerHTML=games.length?games.map(g=>{
+    const decidedEarly=String(g.ruling||"0")!=="0";
+    const winner=g.homeResult==="W"?g.homeUser:g.awayResult==="W"?g.awayUser:"";
+    const decision=decidedEarly&&winner?` · Decisión oficial: ${esc(winner)} gana (ruling ${esc(g.ruling)})`:"";
+    return `<article class="game-card"><div><div><span class="manager">${esc(g.awayUser)}</span> · <strong>${esc(g.awayTeam)}</strong> <span class="muted">@</span> <span class="manager">${esc(g.homeUser)}</span> · <strong>${esc(g.homeTeam)}</strong></div><div class="meta">${esc(g.date||"Fecha no disponible")} · ${g.uuid?`UUID ${esc(g.uuid)}`:`ID ${esc(g.id)} (sin UUID)`}${g.pitcherInfo?` · ${esc(g.pitcherInfo)}`:""}${decision}</div></div><div class="score">${g.awayScore??"—"} — ${g.homeScore??"—"}${decidedEarly?"*":""}</div></article>`;
+  }).join(""):`<div class="empty">Sin datos.</div>`;
 
   const bat=battingLeaders(state.stats);
   $("#battingBody").innerHTML=bat.length?bat.map(p=>`<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td>${p.g}</td><td>${p.ab}</td><td>${p.r}</td><td>${p.h}</td><td>${p.doubles}</td><td>${p.triples}</td><td>${p.hr}</td><td>${p.rbi}</td><td>${p.bb}</td><td>${p.so}</td><td>${fmt3(p.avg)}</td><td>${fmt3(p.obp)}</td><td>${fmt3(p.slg)}</td><td><strong>${fmt3(p.ops)}</strong></td></tr>`).join(""):`<tr><td colspan="16" class="empty">Carga los Game Logs para ver estadísticas.</td></tr>`;

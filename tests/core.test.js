@@ -50,6 +50,18 @@ test("standings no separa un usuario solo por mayúsculas",()=>{
   assert.equal(row.w,2);
 });
 
+test("standings respeta la decisión oficial cuando el marcador quedó igualado por ruling",()=>{
+  const games=[{
+    homeUser:"Angelotti0611",awayUser:"gabrielVzla170",homeTeam:"Phillies",awayTeam:"Yankees",
+    homeScore:1,awayScore:1,homeResult:"W",awayResult:"L",ruling:"5",dateValue:new Date("2026-08-22")
+  }];
+  const standings=calculateStandings(games);
+  const winner=standings.find(row=>row.user==="Angelotti0611");
+  const loser=standings.find(row=>row.user==="gabrielVzla170");
+  assert.equal(winner.gp,1); assert.equal(winner.w,1); assert.equal(winner.l,0);
+  assert.equal(loser.gp,1); assert.equal(loser.w,0); assert.equal(loser.l,1);
+});
+
 test("IP de béisbol se suma por outs",()=>{
   assert.equal(baseballIpToOuts("2.2"),8); assert.equal(baseballIpToOuts("0.1"),1); assert.equal(outsToBaseballIp(9),"3.0");
 });

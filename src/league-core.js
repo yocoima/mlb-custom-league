@@ -106,6 +106,9 @@ export function normalizeHistoryGame(row, context = {}) {
     querySide,
     homeScore: toNumber(row?.home_runs ?? row?.home_score ?? row?.homeScore),
     awayScore: toNumber(row?.away_runs ?? row?.away_score ?? row?.awayScore),
+    homeResult: cleanDisplayName(row?.home_display_result ?? row?.homeResult).toUpperCase(),
+    awayResult: cleanDisplayName(row?.away_display_result ?? row?.awayResult).toUpperCase(),
+    ruling: cleanDisplayName(row?.ruling),
     homeHits: toNumber(row?.home_hits),
     awayHits: toNumber(row?.away_hits),
     homeErrors: toNumber(row?.home_errors),
@@ -177,9 +180,11 @@ export function calculateStandings(games) {
     home.gp++; away.gp++;
     home.rf += game.homeScore; home.ra += game.awayScore;
     away.rf += game.awayScore; away.ra += game.homeScore;
-    if (game.homeScore > game.awayScore) {
+    const homeWon = game.homeResult === "W" || game.awayResult === "L";
+    const awayWon = game.awayResult === "W" || game.homeResult === "L";
+    if (homeWon || (!awayWon && game.homeScore > game.awayScore)) {
       home.w++; away.l++; home.form.push("W"); away.form.push("L");
-    } else if (game.awayScore > game.homeScore) {
+    } else if (awayWon || game.awayScore > game.homeScore) {
       away.w++; home.l++; away.form.push("W"); home.form.push("L");
     }
   }
