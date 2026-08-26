@@ -52,6 +52,13 @@ test("standings no separa un usuario solo por mayúsculas",()=>{
   assert.equal(row.w,2);
 });
 
+test("standings conserva participantes configurados sin juegos",()=>{
+  const standings=calculateStandings([], [{username:"hector-gali07",team:"Blue Jays"}]);
+  assert.deepEqual(standings[0],{
+    user:"hector-gali07",team:"Blue Jays",gp:0,w:0,l:0,rf:0,ra:0,form:[],pct:0,diff:0
+  });
+});
+
 test("standings respeta la decisión oficial cuando el marcador quedó igualado por ruling",()=>{
   const games=[{
     homeUser:"Angelotti0611",awayUser:"gabrielVzla170",homeTeam:"Phillies",awayTeam:"Yankees",

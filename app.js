@@ -18,7 +18,7 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.3.0";
+} from "./src/league-core.js?v=3.3.1";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -250,6 +250,12 @@ function mergeApiRecords(existing,records){
   return merged;
 }
 
+function excludedGameLabel(game,lineScore){
+  const awayScore=lineScore?.away_runs??game.awayScore??"?";
+  const homeScore=lineScore?.home_runs??game.homeScore??"?";
+  return `${game.awayUser} ${awayScore}–${homeScore} ${game.homeUser} (${game.date||"sin fecha"})`;
+}
+
 async function discoverLeague(){
   state.warnings=[]; state.participants.clear(); state.games.clear(); state.stats=createStatAccumulator();
   const cfg=state.config;
@@ -294,6 +300,8 @@ async function discoverLeague(){
   let failedLogs=0;
   let excludedByInnings=0;
   let excludedUnfinished=0;
+  const unfinishedDetails=[];
+  const inningsDetails=[];
   for(const [fingerprint,candidates] of candidateGroups){
     checked++;
     setStatus(`Validando partidos y UUID: ${checked}/${candidateGroups.size}…`);
@@ -314,10 +322,12 @@ async function discoverLeague(){
     if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")continue;
     if(!isFormallyCompletedGame(lineScore)){
       excludedUnfinished++;
+      unfinishedDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ruling ${lineScore.ruling??"?"}, ${lineScore.innings??"?"} entradas`);
       continue;
     }
     if(lineScore&&!isCompatibleWithRegulationInnings(lineScore,cfg.regulationInnings)){
       excludedByInnings++;
+      inningsDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ${lineScore.innings??"?"} entradas`);
       continue;
     }
     const uuid=cleanDisplayName(lineScore?.game_uuid);
@@ -344,8 +354,8 @@ async function discoverLeague(){
   }
 
   if(failedLogs)warn(`${failedLogs} partidos se omitieron porque Game Log no permitió validar UUID, identidad y entradas.`);
-  if(excludedUnfinished)warn(`${excludedUnfinished} partidos interrumpidos, empatados o decididos por ruling se excluyeron.`);
-  if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas.`);
+  if(excludedUnfinished)warn(`${excludedUnfinished} partidos interrumpidos, empatados o decididos por ruling se excluyeron: ${unfinishedDetails.join("; ")}.`);
+  if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas: ${inningsDetails.join("; ")}.`);
   if(!state.games.size) throw new Error("No se pudieron validar partidos pertenecientes a la liga configurada.");
   state.lastSync=new Date().toISOString(); saveState(); render();
   setStatus(`Liga configurada: ${state.participants.size} participantes y ${state.games.size} partidos LEAGUE únicos.`,"success");
@@ -376,7 +386,7 @@ async function loadStats(){
 
 function render(){
   const games=[...state.games.values()].sort((a,b)=>(b.dateValue?.getTime?.()||0)-(a.dateValue?.getTime?.()||0));
-  const standings=calculateStandings(games);
+  const standings=calculateStandings(games,[...state.participants.values()]);
   $("#participantCount").textContent=state.participants.size;
   $("#gameCount").textContent=games.length;
   $("#logCount").textContent=state.stats.loadedGameIds.size;

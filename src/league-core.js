@@ -159,7 +159,7 @@ export function participantTeamFromGame(game, queryUser, queryTeam) {
   return "";
 }
 
-export function calculateStandings(games) {
+export function calculateStandings(games, participants = []) {
   const table = new Map();
   const ensure = (user, team) => {
     const displayUser = cleanDisplayName(user) || cleanDisplayName(team) || "Unknown";
@@ -171,6 +171,10 @@ export function calculateStandings(games) {
     }
     return table.get(key);
   };
+
+  for (const participant of participants) {
+    ensure(participant?.username ?? participant?.user, participant?.team);
+  }
 
   const sorted = [...games].sort((a, b) => (a.dateValue?.getTime?.() ?? 0) - (b.dateValue?.getTime?.() ?? 0));
   for (const game of sorted) {
