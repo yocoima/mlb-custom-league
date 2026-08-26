@@ -42,7 +42,7 @@
     </nav>
 
     <section id="standings" class="panel active">
-      <div class="panel-head"><div><h2>Standings</h2><p>Calculados únicamente con partidos cuyo <code>game_mode</code> es <code>LEAGUE</code>.</p></div></div>
+      <div class="panel-head"><div><h2>Standings</h2><p>Calculados con partidos LEAGUE que coinciden con el roster, equipos y fecha inicial configurados.</p></div></div>
       <div class="table-wrap"><table>
         <thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>GP</th><th>W</th><th>L</th><th>PCT</th><th>RF</th><th>RA</th><th>DIFF</th><th>Forma</th></tr></thead>
         <tbody id="standingsBody"><tr><td colspan="11" class="empty">Sin datos.</td></tr></tbody>
@@ -50,7 +50,7 @@
     </section>
 
     <section id="games" class="panel">
-      <div class="panel-head"><div><h2>Partidos</h2><p>Resultados deduplicados de la Custom League detectada.</p></div></div>
+      <div class="panel-head"><div><h2>Partidos</h2><p>Resultados deduplicados por <code>game_uuid</code> de la liga configurada.</p></div></div>
       <div id="gamesList" class="game-list"><div class="empty">Sin datos.</div></div>
     </section>
 
@@ -71,9 +71,9 @@
     </section>
 
     <section id="participants" class="panel">
-      <div class="panel-head"><div><h2>Participantes detectados</h2><p>La liga se agrupa por red de rivales y equipo MLB fijo por participante.</p></div></div>
+      <div class="panel-head"><div><h2>Participantes de la liga</h2><p>Roster configurado; el <code>player_id</code> se verifica automáticamente desde Game Log.</p></div></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Jugador</th><th>Plataforma</th><th>Equipo</th><th>Estado</th><th>Descubierto por</th></tr></thead>
+        <thead><tr><th>Jugador</th><th>Plataforma</th><th>Equipo</th><th>Estado</th><th>Origen</th></tr></thead>
         <tbody id="participantsBody"><tr><td colspan="5" class="empty">Sin datos.</td></tr></tbody>
       </table></div>
     </section>
@@ -83,19 +83,23 @@
       <form id="settingsForm" class="form">
         <div class="two">
           <label>Usuario de The Show<input id="username" autocomplete="off" placeholder="tu_usuario" required /></label>
-          <label>Plataforma<select id="platform"><option value="psn">PSN</option><option value="xbl">Xbox</option><option value="mlbts">MLBTS</option><option value="nsw">Nintendo</option></select></label>
+          <label>Plataforma<select id="platform"><option value="psn">PSN</option></select></label>
         </div>
         <div class="two">
-          <label>Game ID semilla (opcional)<input id="seedGameId" inputmode="numeric" placeholder="Auto: último LEAGUE" /></label>
-          <label>Mi equipo en esta liga (opcional)<input id="myTeam" placeholder="Ej. Tigers" /></label>
+          <label>Game ID semilla (validación opcional)<input id="seedGameId" inputmode="numeric" placeholder="Ej. 1690641801" /></label>
+          <label>Mi equipo en esta liga<input id="myTeam" placeholder="Ej. Tigers" required /></label>
         </div>
         <div class="two">
+          <label>Inicio de esta temporada<input id="startDate" type="date" required /></label>
           <label>Máx. páginas por participante<input id="maxPages" type="number" min="1" max="100" value="20" /></label>
-          <label>Máx. participantes<input id="maxParticipants" type="number" min="2" max="40" value="20" /></label>
         </div>
         <label>URL del Cloudflare Worker / proxy (opcional)<input id="proxyBase" placeholder="https://mlb26-custom-league-proxy.usuario.workers.dev" /></label>
-        <label>Mapeo manual opcional de rivales (JSON)
-          <textarea id="overrides" rows="5" spellcheck="false" placeholder='{"Rival":{"username":"Rival","platform":"xbl"}}'></textarea>
+        <label>Roster inicial de la liga (JSON: usuario → equipo)
+          <textarea id="roster" rows="12" spellcheck="false" required placeholder='{
+  "yocoima_herrera": "Tigers",
+  "Gaboandres20": "Diamondbacks",
+  "LeyP9": "Red Sox"
+}'></textarea>
         </label>
         <div class="actions">
           <button class="btn primary" type="submit">Guardar configuración</button>
@@ -105,7 +109,7 @@
       </form>
       <div class="info-box">
         <strong>Cómo identifica la liga</strong>
-        <p>La API pública no expone un <code>league_id</code> en los ejemplos que tenemos. Esta versión toma un partido LEAGUE como semilla, fija el equipo MLB del usuario y recorre solamente partidos LEAGUE donde cada participante conserva ese equipo. Esto separa razonablemente una Custom League de otras ligas.</p>
+        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
       </div>
     </section>
   </main>

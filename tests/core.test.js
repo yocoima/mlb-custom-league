@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   cleanDisplayName,isLeagueRow,normalizeHistoryGame,opponentFromGame,participantTeamFromGame,
+  showDateKey,isOnOrAfterStartDate,gameFingerprint,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders
 } from "../src/league-core.js";
 
@@ -19,6 +20,17 @@ test("resuelve CPU como el usuario consultado",()=>{
   assert.deepEqual(opponentFromGame(g,"mi_usuario","Tigers"),{user:"Rival",team:"Diamondbacks",side:"home"});
 });
 
+test("filtra por fecha de inicio usando la fecha oficial del juego",()=>{
+  assert.equal(showDateKey("08/24/2026 23:23:25"),"2026-08-24");
+  assert.equal(isOnOrAfterStartDate("08/24/2026 23:23:25","2026-08-15"),true);
+  assert.equal(isOnOrAfterStartDate("06/05/2026 02:24:58","2026-08-15"),false);
+});
+
+test("fingerprint une los IDs por participante del mismo juego",()=>{
+  const base={date:"08/22/2026 02:02:52",homeUser:"Hanscristians",awayUser:"yocoima_herrera",homeTeam:"Dodgers",awayTeam:"Tigers",homeScore:1,awayScore:4};
+  assert.equal(gameFingerprint({...base,id:"1676353383"}),gameFingerprint({...base,id:"1676353384"}));
+});
+
 test("standings calcula W/L, carreras y diferencial",()=>{
   const games=[
     {homeUser:"A",awayUser:"B",homeTeam:"Tigers",awayTeam:"Red Sox",homeScore:5,awayScore:3,dateValue:new Date("2026-01-01")},
@@ -26,6 +38,16 @@ test("standings calcula W/L, carreras y diferencial",()=>{
   ];
   const s=calculateStandings(games);
   assert.equal(s[0].user,"A"); assert.equal(s[0].w,2); assert.equal(s[0].rf,7); assert.equal(s[0].ra,4); assert.equal(s[0].diff,3);
+});
+
+test("standings no separa un usuario solo por mayúsculas",()=>{
+  const games=[
+    {homeUser:"Yermain10",awayUser:"B",homeTeam:"Brewers",awayTeam:"Red Sox",homeScore:5,awayScore:3,dateValue:new Date("2026-01-01")},
+    {homeUser:"C",awayUser:"yermain10",homeTeam:"Tigers",awayTeam:"Brewers",homeScore:1,awayScore:2,dateValue:new Date("2026-01-02")}
+  ];
+  const row=calculateStandings(games).find(item=>item.user.toLowerCase()==="yermain10");
+  assert.equal(row.gp,2);
+  assert.equal(row.w,2);
 });
 
 test("IP de béisbol se suma por outs",()=>{

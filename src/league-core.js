@@ -35,6 +35,24 @@ export function parseShowDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+export function showDateKey(value) {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (match) {
+    const [, mm, dd, yyyy] = match;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const date = parseShowDate(raw);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function isOnOrAfterStartDate(value, startDate) {
+  if (!startDate) return true;
+  const key = showDateKey(value);
+  return Boolean(key && key >= String(startDate));
+}
+
 export function isLeagueRow(row) {
   return String(row?.game_mode ?? "").toUpperCase() === "LEAGUE";
 }
@@ -97,6 +115,20 @@ export function normalizeHistoryGame(row, context = {}) {
   };
 }
 
+export function gameFingerprint(game) {
+  const value = part => cleanDisplayName(part).toLowerCase();
+  return [
+    showDateKey(game?.date),
+    String(game?.date ?? ""),
+    value(game?.awayUser),
+    value(game?.awayTeam),
+    String(game?.awayScore ?? ""),
+    value(game?.homeUser),
+    value(game?.homeTeam),
+    String(game?.homeScore ?? "")
+  ].join("|");
+}
+
 export function queryParticipantSide(game, queryUser, queryTeam) {
   if (game.querySide) return game.querySide;
   if (queryUser && sameText(game.homeUser, queryUser)) return "home";
@@ -127,9 +159,10 @@ export function participantTeamFromGame(game, queryUser, queryTeam) {
 export function calculateStandings(games) {
   const table = new Map();
   const ensure = (user, team) => {
-    const key = cleanDisplayName(user) || cleanDisplayName(team) || "Unknown";
+    const displayUser = cleanDisplayName(user) || cleanDisplayName(team) || "Unknown";
+    const key = displayUser.toLowerCase();
     if (!table.has(key)) {
-      table.set(key, { user: key, team: cleanDisplayName(team), gp: 0, w: 0, l: 0, rf: 0, ra: 0, form: [] });
+      table.set(key, { user: displayUser, team: cleanDisplayName(team), gp: 0, w: 0, l: 0, rf: 0, ra: 0, form: [] });
     } else if (!table.get(key).team && team) {
       table.get(key).team = cleanDisplayName(team);
     }
