@@ -126,3 +126,20 @@ test("ordena líderes de pitcheo por ponches",()=>{
   acc.pitching.set("two",{...base,name:"Pitcher B",so:8});
   assert.equal(pitchingLeaders(acc,"so")[0].name,"Pitcher B");
 });
+
+test("consolida el mismo jugador aunque cambie p_inx, posición o decisión",()=>{
+  const acc=createStatAccumulator();
+  const gameBase={homeTeam:"Tigers",awayTeam:"Diamondbacks",homeUser:"Manager",awayUser:"Rival"};
+  const payload=(batterName,pInx,pitcherName,pIdx,hits)=>({game:[["box_score",[
+    {team_id:"7",team_name:"Tigers","7":{
+      batting_stats:[{player_name:batterName,p_inx:pInx,ab:"2",r:"0",h:String(hits),rbi:"0",bb:"0",so:"0",doubles:"0",triples:"0",hr:"0",hbp:"0",sf:"0",sb:"0",cs:"0"}],
+      pitching_stats:[{player_name:pitcherName,p_idx:pIdx,ip:"1.0",h:"0",r:"0",er:"0",bb:"0",so:"1",win:"0",loss:"0",save:"0",b_save:"0",hold:"0"}]
+    }}
+  ]]]});
+  addGameStats(acc,{...gameBase,id:"1"},payload("Clark, CF","173","Pitcher (W, 1-0)","11",1));
+  addGameStats(acc,{...gameBase,id:"2"},payload("1-Clark, PR-CF","205","Pitcher","19",2));
+  const bat=battingLeaders(acc);
+  const pit=pitchingLeaders(acc);
+  assert.equal(bat.length,1); assert.equal(bat[0].g,2); assert.equal(bat[0].h,3);
+  assert.equal(pit.length,1); assert.equal(pit[0].g,2); assert.equal(pit[0].so,2);
+});

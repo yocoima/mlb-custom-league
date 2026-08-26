@@ -263,10 +263,19 @@ function stripPitcherDecision(name) {
   return cleanDisplayName(name).replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
+function canonicalStatPlayerName(name, type) {
+  const cleaned = type === "pit" ? stripPitcherDecision(name) : cleanDisplayName(name);
+  return cleaned
+    .replace(/^\d+-\s*/, "")
+    .replace(/,\s*(?:P|C|1B|2B|3B|SS|LF|CF|RF|DH|PH|PR)(?:-(?:P|C|1B|2B|3B|SS|LF|CF|RF|DH|PH|PR))*\s*$/i, "")
+    .trim()
+    .toLowerCase();
+}
+
 function stablePlayerKey(manager, row, type) {
   const idx = cleanDisplayName(type === "bat" ? row?.p_inx : row?.p_idx);
-  const name = type === "pit" ? stripPitcherDecision(row?.player_name) : cleanDisplayName(row?.player_name);
-  return `${cleanDisplayName(manager)}|${type}|${idx || name.toLowerCase()}`;
+  const name = canonicalStatPlayerName(row?.player_name, type);
+  return `${cleanDisplayName(manager).toLowerCase()}|${type}|${name || idx}`;
 }
 
 export function createStatAccumulator() {
