@@ -207,6 +207,24 @@ export function gameParts(payload) {
   };
 }
 
+export function scoreThroughInning(lineScore, side, inning) {
+  let runs = 0;
+  for (let current = 1; current <= inning; current++) {
+    runs += toNumber(lineScore?.[`${side}_runs_${current}`], 0) ?? 0;
+  }
+  return runs;
+}
+
+export function isCompatibleWithRegulationInnings(lineScore, regulationInnings) {
+  const regulation = Math.max(1, Math.trunc(toNumber(regulationInnings, 0) ?? 0));
+  const played = Math.max(0, Math.trunc(toNumber(lineScore?.innings, 0) ?? 0));
+  if (!regulation || !played) return false;
+  if (played <= regulation) return true;
+  const homeAtRegulation = scoreThroughInning(lineScore, "home", regulation);
+  const awayAtRegulation = scoreThroughInning(lineScore, "away", regulation);
+  return homeAtRegulation === awayAtRegulation;
+}
+
 export function baseballIpToOuts(value) {
   if (value === null || value === undefined || value === "") return 0;
   const text = String(value).trim();

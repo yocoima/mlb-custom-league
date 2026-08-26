@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   cleanDisplayName,isLeagueRow,normalizeHistoryGame,opponentFromGame,participantTeamFromGame,
   showDateKey,isOnOrAfterStartDate,gameFingerprint,
+  scoreThroughInning,isCompatibleWithRegulationInnings,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders
 } from "../src/league-core.js";
 
@@ -60,6 +61,16 @@ test("standings respeta la decisión oficial cuando el marcador quedó igualado 
   const loser=standings.find(row=>row.user==="gabrielVzla170");
   assert.equal(winner.gp,1); assert.equal(winner.w,1); assert.equal(winner.l,0);
   assert.equal(loser.gp,1); assert.equal(loser.w,0); assert.equal(loser.l,1);
+});
+
+test("valida una liga de 5 innings sin excluir extra innings legítimos",()=>{
+  const nineInningGame={innings:"9",away_runs_1:"1",away_runs_2:"0",away_runs_3:"1",away_runs_4:"1",away_runs_5:"0",home_runs_1:"0",home_runs_2:"0",home_runs_3:"1",home_runs_4:"1",home_runs_5:"0"};
+  const extraInningGame={innings:"6",away_runs_1:"1",away_runs_2:"0",away_runs_3:"1",away_runs_4:"1",away_runs_5:"0",home_runs_1:"0",home_runs_2:"1",home_runs_3:"0",home_runs_4:"1",home_runs_5:"1"};
+  assert.equal(scoreThroughInning(nineInningGame,"away",5),3);
+  assert.equal(scoreThroughInning(nineInningGame,"home",5),2);
+  assert.equal(isCompatibleWithRegulationInnings(nineInningGame,5),false);
+  assert.equal(isCompatibleWithRegulationInnings(extraInningGame,5),true);
+  assert.equal(isCompatibleWithRegulationInnings({innings:"4"},5),true);
 });
 
 test("IP de béisbol se suma por outs",()=>{

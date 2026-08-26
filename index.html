@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.1.2" />
+  <link rel="stylesheet" href="styles.css?v=3.2.0" />
 </head>
 <body>
   <header class="topbar">
@@ -91,6 +91,9 @@
         </div>
         <div class="two">
           <label>Inicio de esta temporada<input id="startDate" type="date" required /></label>
+          <label>Entradas reglamentarias<input id="regulationInnings" type="number" min="1" max="9" value="5" required /></label>
+        </div>
+        <div class="two">
           <label>Máx. páginas por participante<input id="maxPages" type="number" min="1" max="100" value="20" /></label>
         </div>
         <label>URL del Cloudflare Worker / proxy (opcional)<input id="proxyBase" placeholder="https://mlb26-custom-league-proxy.usuario.workers.dev" /></label>
@@ -109,12 +112,12 @@
       </form>
       <div class="info-box">
         <strong>Cómo identifica la liga</strong>
-        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
+        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. También valida las entradas reglamentarias: un juego más largo solo se acepta si estaba empatado al terminar la última entrada reglamentaria. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
       </div>
     </section>
   </main>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.1.2"></script>
+  <script type="module" src="app.js?v=3.2.0"></script>
 </body>
 </html>

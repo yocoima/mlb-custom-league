@@ -9,6 +9,7 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - usa un roster inicial y una fecha de inicio configurados por el comisionado;
 - consulta únicamente los historiales de esos participantes, todos PSN;
 - exige que ambos participantes conserven el equipo configurado;
+- valida la cantidad de entradas reglamentarias y conserva extra innings legítimos;
 - obtiene `player_id` desde `Game Log` para verificar identidades;
 - deduplica el mismo partido globalmente mediante `game_uuid`;
 - calcula standings: GP, W, L, PCT, RF, RA, DIFF y forma reciente;
@@ -27,7 +28,8 @@ La API pública no expone `league_id`, nombre de liga ni roster oficial. Para ev
 2. roster `usuario -> equipo MLB`;
 3. ambos jugadores deben pertenecer al roster;
 4. ambos deben usar el equipo asignado;
-5. `player_id` verifica la identidad y `game_uuid` identifica el partido globalmente.
+5. un juego que supera las entradas reglamentarias debe haber estado empatado al finalizar la última de ellas;
+6. `player_id` verifica la identidad y `game_uuid` identifica el partido globalmente.
 
 El Game ID semilla es una validación opcional: si se indica, debe aparecer dentro de la liga configurada. Si dos ligas comparten exactamente participantes, equipos y fechas, la API pública no permite distinguirlas automáticamente.
 

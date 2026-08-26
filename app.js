@@ -12,11 +12,12 @@ import {
   gameFingerprint,
   calculateStandings,
   gameParts,
+  isCompatibleWithRegulationInnings,
   createStatAccumulator,
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.1.2";
+} from "./src/league-core.js?v=3.2.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -34,7 +35,7 @@ const state = {
 };
 
 function defaultConfig(){
-  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", maxPages:20, proxyBase:"", roster:{} };
+  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:"", roster:{} };
 }
 function loadConfigV3Only(){
   try { return {...defaultConfig(), ...JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")}; }
@@ -83,6 +84,7 @@ function formToConfig(){
     username:cleanDisplayName($("#username").value), platform,
     seedGameId:$("#seedGameId").value.trim(), myTeam:cleanDisplayName($("#myTeam").value),
     startDate:$("#startDate").value,
+    regulationInnings:Math.min(9,Math.max(1,Number($("#regulationInnings").value)||5)),
     maxPages:Math.min(100,Math.max(1,Number($("#maxPages").value)||20)),
     proxyBase:$("#proxyBase").value.trim().replace(/\/$/,""), roster
   };
@@ -92,7 +94,7 @@ function formToConfig(){
 function fillForm(){
   $("#username").value=state.config.username; $("#platform").value=state.config.platform;
   $("#seedGameId").value=state.config.seedGameId; $("#myTeam").value=state.config.myTeam;
-  $("#startDate").value=state.config.startDate||""; $("#maxPages").value=state.config.maxPages;
+  $("#startDate").value=state.config.startDate||""; $("#regulationInnings").value=state.config.regulationInnings||5; $("#maxPages").value=state.config.maxPages;
   $("#proxyBase").value=state.config.proxyBase; $("#roster").value=Object.keys(state.config.roster||{}).length?JSON.stringify(state.config.roster,null,2):"";
 }
 
@@ -164,6 +166,7 @@ function configuredRoster(config=state.config){
     if(!current) roster.set(primaryKey,{username:config.username,team:config.myTeam,aliases:[],platform:"psn",status:"configured",discoveredBy:"Configuración principal"});
   }
   if(!config.startDate) throw new Error("Indica la fecha de inicio de esta temporada de liga.");
+  if(!Number.isInteger(config.regulationInnings)||config.regulationInnings<1||config.regulationInnings>9) throw new Error("Las entradas reglamentarias deben estar entre 1 y 9.");
   if(roster.size<2) throw new Error("Configura al menos dos participantes con sus equipos.");
   if(!roster.has(primaryKey)) throw new Error("Incluye al usuario principal en el roster o completa 'Mi equipo'.");
   return roster;
@@ -282,6 +285,7 @@ async function discoverLeague(){
 
   let checked=0;
   let failedLogs=0;
+  let excludedByInnings=0;
   for(const [fingerprint,candidates] of candidateGroups){
     checked++;
     setStatus(`Validando partidos y UUID: ${checked}/${candidateGroups.size}…`);
@@ -295,7 +299,15 @@ async function discoverLeague(){
       }catch{}
     }
     const {lineScore}=payload?gameParts(payload):{lineScore:null};
+    if(!lineScore){
+      failedLogs++;
+      continue;
+    }
     if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")continue;
+    if(lineScore&&!isCompatibleWithRegulationInnings(lineScore,cfg.regulationInnings)){
+      excludedByInnings++;
+      continue;
+    }
     const uuid=cleanDisplayName(lineScore?.game_uuid);
     const dedupKey=uuid?`uuid:${uuid}`:`fingerprint:${fingerprint}`;
     const records=candidates.map(candidate=>candidate.record);
@@ -314,13 +326,13 @@ async function discoverLeague(){
       ruling:cleanDisplayName(lineScore?.ruling||usedCandidate.game.ruling||"0")
     };
     if(lineScore&&!bindParticipantIds(game,lineScore))continue;
-    if(!lineScore)failedLogs++;
     const existing=state.games.get(dedupKey);
     if(existing)existing.apiRecords=mergeApiRecords(existing.apiRecords,records);
     else state.games.set(dedupKey,game);
   }
 
-  if(failedLogs)warn(`${failedLogs} partidos no expusieron game_uuid; se deduplicaron con fecha, participantes, equipos y resultado.`);
+  if(failedLogs)warn(`${failedLogs} partidos se omitieron porque Game Log no permitió validar UUID, identidad y entradas.`);
+  if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas.`);
   if(!state.games.size) throw new Error("No se pudieron validar partidos pertenecientes a la liga configurada.");
   state.lastSync=new Date().toISOString(); saveState(); render();
   setStatus(`Liga configurada: ${state.participants.size} participantes y ${state.games.size} partidos LEAGUE únicos.`,"success");
