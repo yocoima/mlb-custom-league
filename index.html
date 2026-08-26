@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>MLB The Show 26 — Custom League Manager</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">MLB THE SHOW 26</div>
+      <h1>Custom League Manager</h1>
+      <p>Solo Custom League · Game History + Game Log</p>
+    </div>
+    <div class="top-actions">
+      <button id="syncBtn" class="btn primary">Actualizar liga</button>
+      <button id="statsBtn" class="btn">Cargar estadísticas</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="status" class="notice">Configura tu usuario y plataforma para comenzar.</div>
+    <div id="warnings" class="warning hidden"></div>
+
+    <section class="cards grid">
+      <article class="stat"><span>Participantes</span><strong id="participantCount">0</strong></article>
+      <article class="stat"><span>Partidos League</span><strong id="gameCount">0</strong></article>
+      <article class="stat"><span>Game Logs cargados</span><strong id="logCount">0</strong></article>
+      <article class="stat"><span>Última sincronización</span><strong id="lastSync">—</strong></article>
+    </section>
+
+    <nav class="tabs" aria-label="Secciones">
+      <button class="tab active" data-tab="standings">Posiciones</button>
+      <button class="tab" data-tab="games">Partidos</button>
+      <button class="tab" data-tab="batting">Bateo</button>
+      <button class="tab" data-tab="pitching">Pitcheo</button>
+      <button class="tab" data-tab="participants">Participantes</button>
+      <button class="tab" data-tab="settings">Configuración</button>
+    </nav>
+
+    <section id="standings" class="panel active">
+      <div class="panel-head"><div><h2>Standings</h2><p>Calculados únicamente con partidos cuyo <code>game_mode</code> es <code>LEAGUE</code>.</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>GP</th><th>W</th><th>L</th><th>PCT</th><th>RF</th><th>RA</th><th>DIFF</th><th>Forma</th></tr></thead>
+        <tbody id="standingsBody"><tr><td colspan="11" class="empty">Sin datos.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="games" class="panel">
+      <div class="panel-head"><div><h2>Partidos</h2><p>Resultados deduplicados de la Custom League detectada.</p></div></div>
+      <div id="gamesList" class="game-list"><div class="empty">Sin datos.</div></div>
+    </section>
+
+    <section id="batting" class="panel">
+      <div class="panel-head"><div><h2>Bateo</h2><p>Acumulado desde Box Score. AVG/OBP/SLG/OPS se recalculan con los totales cargados.</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Jugador</th><th>Manager</th><th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>SO</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th></tr></thead>
+        <tbody id="battingBody"><tr><td colspan="16" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="pitching" class="panel">
+      <div class="panel-head"><div><h2>Pitcheo</h2><p>IP se suma usando outs reales; ERA, WHIP y K/9 se recalculan.</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Pitcher</th><th>Manager</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>H</th><th>ER</th><th>BB</th><th>SO</th><th>ERA</th><th>WHIP</th><th>K/9</th></tr></thead>
+        <tbody id="pitchingBody"><tr><td colspan="14" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="participants" class="panel">
+      <div class="panel-head"><div><h2>Participantes detectados</h2><p>La liga se agrupa por red de rivales y equipo MLB fijo por participante.</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Jugador</th><th>Plataforma</th><th>Equipo</th><th>Estado</th><th>Descubierto por</th></tr></thead>
+        <tbody id="participantsBody"><tr><td colspan="5" class="empty">Sin datos.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="settings" class="panel">
+      <div class="panel-head"><div><h2>Configuración</h2><p>No se usan cookies, contraseñas ni datos de Diamond Dynasty.</p></div></div>
+      <form id="settingsForm" class="form">
+        <div class="two">
+          <label>Usuario de The Show<input id="username" autocomplete="off" placeholder="tu_usuario" required /></label>
+          <label>Plataforma<select id="platform"><option value="psn">PSN</option><option value="xbl">Xbox</option><option value="mlbts">MLBTS</option><option value="nsw">Nintendo</option></select></label>
+        </div>
+        <div class="two">
+          <label>Game ID semilla (opcional)<input id="seedGameId" inputmode="numeric" placeholder="Auto: último LEAGUE" /></label>
+          <label>Mi equipo en esta liga (opcional)<input id="myTeam" placeholder="Ej. Tigers" /></label>
+        </div>
+        <div class="two">
+          <label>Máx. páginas por participante<input id="maxPages" type="number" min="1" max="100" value="20" /></label>
+          <label>Máx. participantes<input id="maxParticipants" type="number" min="2" max="40" value="20" /></label>
+        </div>
+        <label>URL del Cloudflare Worker / proxy (opcional)<input id="proxyBase" placeholder="https://mlb26-custom-league-proxy.usuario.workers.dev" /></label>
+        <label>Mapeo manual opcional de rivales (JSON)
+          <textarea id="overrides" rows="5" spellcheck="false" placeholder='{"Rival":{"username":"Rival","platform":"xbl"}}'></textarea>
+        </label>
+        <div class="actions">
+          <button class="btn primary" type="submit">Guardar configuración</button>
+          <button class="btn" id="clearBtn" type="button">Limpiar datos locales</button>
+          <label class="btn file-btn">Importar Game History JSON<input id="historyFile" type="file" accept="application/json,.json,.md,.txt" /></label>
+        </div>
+      </form>
+      <div class="info-box">
+        <strong>Cómo identifica la liga</strong>
+        <p>La API pública no expone un <code>league_id</code> en los ejemplos que tenemos. Esta versión toma un partido LEAGUE como semilla, fija el equipo MLB del usuario y recorre solamente partidos LEAGUE donde cada participante conserva ese equipo. Esto separa razonablemente una Custom League de otras ligas.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

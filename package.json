@@ -1,0 +1,11 @@
+{
+  "name": "mlb26-custom-league-manager",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "python3 -m http.server 8080",
+    "deploy:worker": "npx wrangler deploy"
+  }
+}

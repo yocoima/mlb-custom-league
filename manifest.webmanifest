@@ -1,0 +1,9 @@
+{
+  "name": "MLB The Show 26 Custom League Manager",
+  "short_name": "Custom League",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#080d18",
+  "theme_color": "#0b1020",
+  "description": "Dashboard independiente para resultados, standings y estadísticas de Custom League de MLB The Show 26."
+}

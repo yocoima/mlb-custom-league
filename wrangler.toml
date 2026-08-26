@@ -1,0 +1,3 @@
+name = "mlb26-custom-league-proxy"
+main = "worker.js"
+compatibility_date = "2026-08-01"
