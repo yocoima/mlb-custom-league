@@ -121,20 +121,68 @@ function overrideFor(name){
   return {username:cleanDisplayName(v?.username||name),platform:v?.platform};
 }
 
-async function resolveOpponentIdentity(displayName,gameId,preferredPlatform){
-  const manual=overrideFor(displayName);
-  if(manual?.username && PLATFORM_VALUES.includes(manual.platform)) return {...manual,method:"manual"};
-  const username=cleanDisplayName(displayName);
-  if(!username||isCpuName(username)) return null;
-  const candidates=[preferredPlatform,...PLATFORM_VALUES].filter((x,i,a)=>a.indexOf(x)===i);
-  for(const platform of candidates){
-    try{
-      const payload=await fetchGameLog(gameId,username,platform);
-      const {lineScore}=gameParts(payload);
-      if(String(lineScore?.id??"")===String(gameId)) return {username,platform,method:"game-log"};
-    }catch{}
+async function resolveOpponentIdentity(displayName, gameId, preferredPlatform) {
+  const manual = overrideFor(displayName);
+
+  if (manual?.username && PLATFORM_VALUES.includes(manual.platform)) {
+    return { ...manual, method: "manual" };
   }
-  return {username,platform:null,method:"unresolved"};
+
+  const username = cleanDisplayName(displayName);
+
+  if (!username || isCpuName(username)) {
+    return null;
+  }
+
+  const candidates = [preferredPlatform, ...PLATFORM_VALUES]
+    .filter((x, i, a) => a.indexOf(x) === i);
+
+  // Buscamos el partido conocido en el historial del rival.
+  // Si aparece, sabemos que username + plataforma son correctos.
+  const MAX_LOOKUP_PAGES = 10;
+
+  for (const platform of candidates) {
+    try {
+      setStatus(`Buscando ${username} en ${platform.toUpperCase()}…`);
+
+      const firstPayload = await fetchHistoryPage(username, platform, 1);
+      const firstRows = historyRows(firstPayload);
+
+      if (firstRows.some(row => String(row.id) === String(gameId))) {
+        return {
+          username,
+          platform,
+          method: "history"
+        };
+      }
+
+      const reportedPages = Number(firstPayload?.total_pages) || 1;
+      const pagesToCheck = Math.min(reportedPages, MAX_LOOKUP_PAGES);
+
+      for (let page = 2; page <= pagesToCheck; page++) {
+        const payload = await fetchHistoryPage(username, platform, page);
+        const rows = historyRows(payload);
+
+        if (rows.some(row => String(row.id) === String(gameId))) {
+          return {
+            username,
+            platform,
+            method: "history"
+          };
+        }
+
+        if (!rows.length) break;
+      }
+    } catch (error) {
+      // Probamos la siguiente plataforma.
+    }
+  }
+
+  return {
+    username,
+    platform: null,
+    method: "unresolved"
+  };
 }
 
 function participantKey(username){return cleanDisplayName(username).toLowerCase();}
