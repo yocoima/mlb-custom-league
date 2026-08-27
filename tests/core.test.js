@@ -5,7 +5,7 @@ import {
   showDateKey,isOnOrAfterStartDate,gameFingerprint,
   scoreThroughInning,isCompatibleWithRegulationInnings,
   isFormallyCompletedGame,
-  calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders
+  calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards
 } from "../src/league-core.js";
 
 test("filtra LEAGUE y limpia códigos de formato",()=>{
@@ -134,6 +134,17 @@ test("ordena líderes de pitcheo por efectividad y salvados",()=>{
   acc.pitching.set("saves",{...base,name:"Cerrador",er:2,sv:3});
   assert.equal(pitchingLeaders(acc,"era")[0].name,"Mejor ERA");
   assert.equal(pitchingLeaders(acc,"sv")[0].name,"Cerrador");
+});
+
+test("archiva ganadores de lideratos e incluye empates",()=>{
+  const acc=createStatAccumulator();
+  const batter={manager:"Manager",team:"Tigers",g:2,ab:4,r:0,h:2,rbi:3,bb:0,so:0,doubles:0,triples:0,hr:2,hbp:0,sf:0,sb:1,cs:0};
+  acc.batting.set("one",{...batter,name:"Bateador A"});
+  acc.batting.set("two",{...batter,name:"Bateador B"});
+  acc.pitching.set("closer",{manager:"Manager",team:"Tigers",name:"Cerrador",g:2,outs:6,h:0,r:0,er:0,bb:0,so:5,w:0,l:0,sv:2,bs:0,hold:0});
+  const awards=tournamentAwards(acc);
+  assert.deepEqual(awards.find(award=>award.key==="hr").winners.map(winner=>winner.player),["Bateador A","Bateador B"]);
+  assert.equal(awards.find(award=>award.key==="sv").winners[0].value,"2");
 });
 
 test("consolida el mismo jugador aunque cambie p_inx, posición o decisión",()=>{

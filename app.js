@@ -17,8 +17,9 @@ import {
   createStatAccumulator,
   addGameStats,
   battingLeaders,
-  pitchingLeaders
-} from "./src/league-core.js?v=3.6.0";
+  pitchingLeaders,
+  tournamentAwards
+} from "./src/league-core.js?v=3.7.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -39,7 +40,7 @@ const state = {
 };
 
 function defaultConfig(){
-  return { leagueName:"", username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[] };
+  return { leagueName:"", username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[], finalizedAt:null };
 }
 function loadConfigV3Only(){
   try { return {...defaultConfig(), ...JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")}; }
@@ -125,6 +126,16 @@ function setStatus(text,kind="normal"){ const el=$("#status"); el.textContent=te
 function warn(text){ if(!state.warnings.includes(text)) state.warnings.push(text); renderWarnings(); }
 function renderWarnings(){ const el=$("#warnings"); if(!state.warnings.length){el.classList.add("hidden");el.innerHTML="";return;} el.classList.remove("hidden"); el.innerHTML=state.warnings.map(x=>`<div>• ${esc(x)}</div>`).join(""); }
 
+function cleanArchivedAwards(value){
+  if(!Array.isArray(value))return [];
+  return value.slice(0,12).map(award=>({
+    key:cleanDisplayName(award?.key).toLowerCase(),label:cleanDisplayName(award?.label),title:cleanDisplayName(award?.title),
+    winners:Array.isArray(award?.winners)?award.winners.slice(0,20).map(winner=>({
+      player:cleanDisplayName(winner?.player),manager:cleanDisplayName(winner?.manager),team:cleanDisplayName(winner?.team),value:cleanDisplayName(winner?.value)
+    })).filter(winner=>winner.player&&winner.value):[]
+  })).filter(award=>award.key&&award.title&&award.winners.length);
+}
+
 function formToConfig(){
   let roster={};
   const raw=$("#roster").value.trim();
@@ -139,7 +150,8 @@ function formToConfig(){
     if(!entry||typeof entry!=="object"||Array.isArray(entry))throw new Error(`El campeón #${index+1} no es válido.`);
     const champion={
       season:cleanDisplayName(entry.season),champion:cleanDisplayName(entry.champion),team:cleanDisplayName(entry.team),
-      runnerUp:cleanDisplayName(entry.runnerUp),result:cleanDisplayName(entry.result),note:cleanDisplayName(entry.note)
+      runnerUp:cleanDisplayName(entry.runnerUp),result:cleanDisplayName(entry.result),note:cleanDisplayName(entry.note),
+      finalizedAt:cleanDisplayName(entry.finalizedAt),awards:cleanArchivedAwards(entry.awards)
     };
     if(!champion.season||!champion.champion)throw new Error(`El campeón #${index+1} necesita season y champion.`);
     return champion;
@@ -153,7 +165,7 @@ function formToConfig(){
     startDate:$("#startDate").value,
     regulationInnings:Math.min(9,Math.max(1,Number($("#regulationInnings").value)||5)),
     maxPages:Math.min(100,Math.max(1,Number($("#maxPages").value)||20)),
-    proxyBase:$("#proxyBase").value.trim().replace(/\/$/,""), roster, champions
+    proxyBase:$("#proxyBase").value.trim().replace(/\/$/,""), roster, champions,finalizedAt:state.config.finalizedAt||null
   };
   if(!config.leagueName)throw new Error("Indica el nombre del torneo.");
   configuredRoster(config);
@@ -210,10 +222,10 @@ async function loadPublishedLeague(){
   setStatus(`Liga pública cargada: ${state.participants.size} participantes y ${state.games.size} partidos.`,"success");
 }
 
-async function publishLeague(){
+async function publishLeague(providedToken=""){
   configuredRoster(state.config);
   if(state.games.size&&state.stats.loadedGameIds.size+state.stats.failedGameIds.size!==state.games.size)throw new Error("Carga las estadísticas antes de publicar.");
-  const token=window.prompt("Clave privada de publicación de la liga:");
+  const token=providedToken||window.prompt("Clave privada de publicación de la liga:");
   if(!token)return;
   const response=await fetch(leagueApiUrl(),{
     method:"POST",headers:{Accept:"application/json","Content-Type":"application/json",Authorization:`Bearer ${token}`},
@@ -228,12 +240,14 @@ async function publishLeague(){
   state.publishedAt=result.publishedAt||new Date().toISOString();
   saveState();
   setStatus(`Liga publicada: ${result.participants} participantes y ${result.games} partidos.`,"success");
+  return result;
 }
 
 async function refreshSharedLeague(){
   const response=await fetch(`${leagueApiUrl()}/refresh`,{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify(publicSnapshot())});
   let result={};try{result=await response.json()}catch{}
   if(!response.ok){
+    if(response.status===409&&result.error==="League is finalized")throw new Error("Este torneo ya está finalizado y no acepta juegos nuevos.");
     if(response.status===409)throw new Error("Otro usuario actualizó la liga mientras trabajabas. Recarga la página y pulsa Actualizar liga nuevamente.");
     throw new Error(result.error||`No se pudo actualizar la liga pública (HTTP ${response.status}).`);
   }
@@ -306,7 +320,7 @@ function loadConfiguredParticipants(){
 
 function startNewSeason(){
   if(!window.confirm("Se preparará una temporada nueva. La liga pública actual no cambiará hasta que guardes y publiques."))return;
-  state.config={...state.config,leagueName:"",seedGameId:"",startDate:""};
+  state.config={...state.config,leagueName:"",seedGameId:"",startDate:"",finalizedAt:null};
   state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.publishedAt=null;state.dataSeasonKey=null;state.warnings=[];
   state.participants.clear();saveConfig();saveState();fillForm();render();
   document.querySelector('[data-tab="settings"]').click();
@@ -545,6 +559,49 @@ async function loadStats(){
   render(); setStatus(`Estadísticas cargadas para ${state.stats.loadedGameIds.size}/${allGames.length} partidos.`,"success");
 }
 
+function awardWinnerNames(award){
+  return award.winners.map(winner=>`${winner.player} (${winner.manager})`).join(" · ");
+}
+
+function closeFinishSeason(){if($("#finishSeasonDialog").open)$("#finishSeasonDialog").close();}
+
+function openFinishSeason(){
+  if(state.config.finalizedAt)throw new Error("Este torneo ya fue finalizado.");
+  if(!state.games.size)throw new Error("No se puede finalizar un torneo sin partidos.");
+  if(state.stats.failedGameIds.size||state.stats.loadedGameIds.size!==state.games.size)throw new Error("Todos los Game Logs deben estar cargados correctamente antes de finalizar.");
+  const participants=[...state.participants.values()].sort((a,b)=>a.username.localeCompare(b.username));
+  const standings=calculateStandings([...state.games.values()],[...state.participants.values()]);
+  const options=participants.map(participant=>`<option value="${esc(participant.username)}">${esc(participant.username)} · ${esc(participant.team)}</option>`).join("");
+  $("#seasonChampion").innerHTML=options;
+  $("#seasonRunnerUp").innerHTML=`<option value="">No indicar</option>${options}`;
+  if(standings[0])$("#seasonChampion").value=standings[0].user;
+  $("#seasonResult").value="";$("#seasonNote").value="";
+  const awards=tournamentAwards(state.stats);
+  $("#finishAwardsPreview").innerHTML=awards.map(award=>`<article class="finish-award"><span>${esc(award.label)} · ${esc(award.title)}</span><strong>${esc(awardWinnerNames(award))} · ${esc(award.winners[0].value)}</strong></article>`).join("");
+  $("#finishSeasonDialog").showModal();
+}
+
+async function finishSeason(){
+  const championName=cleanDisplayName($("#seasonChampion").value),runnerUp=cleanDisplayName($("#seasonRunnerUp").value);
+  const champion=state.participants.get(participantKey(championName));
+  if(!champion)throw new Error("Selecciona un campeón válido.");
+  if(runnerUp&&sameText(runnerUp,championName))throw new Error("El campeón y subcampeón deben ser diferentes.");
+  const token=window.prompt("Clave privada para finalizar y publicar el torneo:");
+  if(!token)return;
+  const previousConfig=state.config;
+  const finalizedAt=new Date().toISOString();
+  const entry={
+    season:state.config.leagueName,champion:champion.username,team:champion.team,runnerUp,
+    result:cleanDisplayName($("#seasonResult").value),note:cleanDisplayName($("#seasonNote").value),
+    finalizedAt,awards:tournamentAwards(state.stats)
+  };
+  state.config={...state.config,finalizedAt,champions:[entry,...(state.config.champions||[]).filter(item=>!sameText(item.season,state.config.leagueName))]};
+  try{
+    saveConfig();await publishLeague(token);fillForm();render();closeFinishSeason();
+    setStatus(`Torneo finalizado: ${champion.username} campeón y ${entry.awards.length} lideratos archivados.`,"success");
+  }catch(error){state.config=previousConfig;saveConfig();render();throw error;}
+}
+
 function leaderCard(title,subtitle,players,value){
   const rows=players.slice(0,5);
   return `<article class="leader-card"><div class="leader-card-head"><div><span>${esc(subtitle)}</span><h3>${esc(title)}</h3></div><strong>${rows.length?esc(value(rows[0])):"—"}</strong></div>${rows.length?`<ol class="leader-list">${rows.map((player,index)=>`<li><span class="leader-position">${index+1}</span><span class="leader-player"><strong>${esc(player.name)}</strong><small>${esc(player.manager)}</small></span><strong class="leader-value">${esc(value(player))}</strong></li>`).join("")}</ol>`:`<div class="empty compact">Sin estadísticas.</div>`}</article>`;
@@ -575,15 +632,22 @@ function renderChampions(){
   }
   const latest=champions[0];
   $("#championSpotlight").innerHTML=`<article class="champion-spotlight"><div class="trophy" aria-hidden="true">★</div><div><span>Último campeón · ${esc(latest.season)}</span><h3>${esc(latest.champion)}</h3><p>${latest.team?`${esc(latest.team)}`:""}${latest.runnerUp?` · Final vs. ${esc(latest.runnerUp)}`:""}${latest.result?` · ${esc(latest.result)}`:""}</p>${latest.note?`<small>${esc(latest.note)}</small>`:""}</div></article>`;
-  $("#championsHistory").innerHTML=`<h3>Historial</h3><div class="champion-grid">${champions.map((entry,index)=>`<article class="champion-entry"><span class="champion-number">${String(index+1).padStart(2,"0")}</span><div><small>${esc(entry.season)}</small><strong>${esc(entry.champion)}</strong><span>${entry.team?esc(entry.team):"Equipo no indicado"}${entry.runnerUp?` · vs. ${esc(entry.runnerUp)}`:""}${entry.result?` · ${esc(entry.result)}`:""}</span></div></article>`).join("")}</div>`;
+  $("#championsHistory").innerHTML=`<h3>Historial</h3><div class="champion-grid">${champions.map((entry,index)=>{
+    const awards=cleanArchivedAwards(entry.awards);
+    const awardHtml=awards.length?`<div class="archive-awards">${awards.map(award=>`<article class="archive-award"><span>${esc(award.label)} · ${esc(award.title)}</span><small>${esc(awardWinnerNames(award))} · <strong>${esc(award.winners[0].value)}</strong></small></article>`).join("")}</div>`:"";
+    return `<article class="season-archive"><div class="champion-entry"><span class="champion-number">${String(index+1).padStart(2,"0")}</span><div><small>${esc(entry.season)}</small><strong>${esc(entry.champion)}</strong><span>${entry.team?esc(entry.team):"Equipo no indicado"}${entry.runnerUp?` · vs. ${esc(entry.runnerUp)}`:""}${entry.result?` · ${esc(entry.result)}`:""}</span></div></div>${awardHtml}</article>`;
+  }).join("")}</div>`;
 }
 
 function render(){
   const games=[...state.games.values()].sort((a,b)=>(b.dateValue?.getTime?.()||0)-(a.dateValue?.getTime?.()||0));
   const standings=calculateStandings(games,[...state.participants.values()]);
   const leagueName=cleanDisplayName(state.config.leagueName);
-  $("#currentLeagueName").textContent=leagueName?`${leagueName} · Solo Custom League`:"Solo Custom League · Game History + Game Log";
+  const finalized=Boolean(state.config.finalizedAt);
+  $("#currentLeagueName").textContent=leagueName?`${leagueName} · ${finalized?"Torneo finalizado":"Solo Custom League"}`:"Solo Custom League · Game History + Game Log";
   document.title=leagueName?`${leagueName} — MLB The Show 26`:`MLB The Show 26 — Custom League Manager`;
+  $("#syncBtn").disabled=finalized;$("#statsBtn").disabled=finalized;$("#finishSeasonBtn").disabled=finalized;
+  $("#finishSeasonBtn").textContent=finalized?"Torneo finalizado":"Finalizar torneo";
   $("#participantCount").textContent=state.participants.size;
   $("#gameCount").textContent=games.length;
   $("#logCount").textContent=state.stats.loadedGameIds.size;
@@ -634,9 +698,12 @@ async function importHistoryFile(file){
 }
 
 $("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();if(!state.games.size)loadConfiguredParticipants();saveConfig();saveState();render();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
-$("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;$("#statsBtn").disabled=true;await discoverLeague();await loadStats();await refreshSharedLeague()}catch(e){setStatus(e.message,"error")}finally{$("#syncBtn").disabled=false;$("#statsBtn").disabled=false}});
-$("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{$("#statsBtn").disabled=false}});
+$("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;$("#statsBtn").disabled=true;await discoverLeague();await loadStats();await refreshSharedLeague()}catch(e){setStatus(e.message,"error")}finally{render()}});
+$("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{render()}});
 $("#publishBtn").addEventListener("click",async()=>{try{$("#publishBtn").disabled=true;await publishLeague()}catch(e){setStatus(e.message,"error")}finally{$("#publishBtn").disabled=false}});
+$("#finishSeasonBtn").addEventListener("click",()=>{try{openFinishSeason()}catch(error){setStatus(error.message,"error")}});
+$("#finishSeasonForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;try{button.disabled=true;await finishSeason()}catch(error){setStatus(error.message,"error")}finally{button.disabled=false}});
+$("#cancelFinishBtn").addEventListener("click",closeFinishSeason);$("#cancelFinishFooterBtn").addEventListener("click",closeFinishSeason);
 $("#newSeasonBtn").addEventListener("click",startNewSeason);
 $("#clearBtn").addEventListener("click",()=>{localStorage.removeItem(STATE_KEY);state.participants.clear();state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.warnings=[];render();setStatus("Datos locales eliminados.")});
 $("#historyFile").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;try{await importHistoryFile(f)}catch(err){setStatus(err.message,"error")}finally{e.target.value=""}});

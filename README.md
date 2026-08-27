@@ -16,6 +16,7 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - carga `Game Log` incrementalmente para estadísticas de bateo y pitcheo;
 - ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
 - muestra un panel resumido de líderes y un historial manual de campeones;
+- permite finalizar una temporada y archivar automáticamente campeón, final y ganadores de AVG, HR, H, RBI, SB, SO, ERA y SV;
 - adapta navegación, tarjetas y standings para pantallas de teléfono;
 - no utiliza cookies, contraseñas, inventario, programas, Diamond Dynasty ni Arena.
 
@@ -133,9 +134,19 @@ El Worker limita cada actualización pública a 25 candidatos y nunca confía en
 
 La publicación inicial puede tener cero juegos. Desde ese momento todos reciben la nueva configuración y cualquiera puede incorporar los primeros resultados con **Actualizar liga**. El historial de campeones se conserva como punto de partida y puede editarse antes de publicar.
 
+## Finalizar un torneo
+
+El botón **Finalizar torneo** está disponible cuando existen partidos y todos sus Game Logs fueron cargados correctamente:
+
+1. selecciona campeón y, opcionalmente, subcampeón, resultado y una nota;
+2. revisa la vista previa de los lideratos;
+3. pulsa **Confirmar y publicar** e introduce la clave privada.
+
+El cierre guarda automáticamente los ganadores de promedio, jonrones, hits, impulsadas, bases robadas, ponches, efectividad y salvados. Los empates se archivan como co-líderes. Después de publicar el cierre, la temporada queda bloqueada para juegos nuevos y permanece visible en **Campeones**. Para continuar se debe crear y publicar una **Nueva temporada**.
+
 ## Historial de campeones
 
-La API no identifica temporadas ni campeones, por lo que este historial se administra manualmente en **Configuración -> Historial de campeones**. Se escribe como una lista JSON ordenada del torneo más reciente al más antiguo:
+La API no identifica temporadas ni campeones. El botón **Finalizar torneo** genera automáticamente la entrada completa; el JSON de **Configuración -> Historial de campeones** se mantiene para corregir o importar registros históricos manuales. La lista se ordena del torneo más reciente al más antiguo:
 
 ```json
 [

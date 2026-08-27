@@ -10,6 +10,15 @@ function cors(extra={}){
 }
 function json(body,status=200,headers={}){return new Response(JSON.stringify(body),{status,headers:cors({"Content-Type":"application/json; charset=utf-8",...headers})});}
 function validUsername(v){return typeof v==="string" && v.length>0 && v.length<=80;}
+function publicAwards(value){
+  if(!Array.isArray(value))return [];
+  return value.slice(0,12).map(award=>({
+    key:String(award?.key||"").slice(0,20),label:String(award?.label||"").slice(0,30),title:String(award?.title||"").slice(0,60),
+    winners:Array.isArray(award?.winners)?award.winners.slice(0,20).map(winner=>({
+      player:String(winner?.player||"").slice(0,100),manager:String(winner?.manager||"").slice(0,100),team:String(winner?.team||"").slice(0,100),value:String(winner?.value||"").slice(0,30)
+    })).filter(winner=>winner.player&&winner.value):[]
+  })).filter(award=>award.key&&award.title&&award.winners.length);
+}
 function publicChampions(value){
   if(!Array.isArray(value)) return [];
   return value.slice(0,50).map(entry=>({
@@ -18,7 +27,7 @@ function publicChampions(value){
     team:String(entry?.team||"").slice(0,100),
     runnerUp:String(entry?.runnerUp||"").slice(0,100),
     result:String(entry?.result||"").slice(0,50),
-    note:String(entry?.note||"").slice(0,300)
+    note:String(entry?.note||"").slice(0,300),finalizedAt:String(entry?.finalizedAt||"").slice(0,40),awards:publicAwards(entry?.awards)
   })).filter(entry=>entry.season&&entry.champion);
 }
 function publicConfig(config={}){
@@ -27,7 +36,7 @@ function publicConfig(config={}){
     myTeam:String(config.myTeam||""),startDate:String(config.startDate||""),
     regulationInnings:Number(config.regulationInnings||5),maxPages:Number(config.maxPages||20),
     proxyBase:String(config.proxyBase||""),roster:config.roster&&typeof config.roster==="object"&&!Array.isArray(config.roster)?config.roster:{},
-    champions:publicChampions(config.champions)
+    champions:publicChampions(config.champions),finalizedAt:String(config.finalizedAt||"").slice(0,40)||null
   };
 }
 function rosterHas(config,username){
@@ -52,6 +61,7 @@ async function officialGameLog(records,config){
 }
 async function refreshLeague(incoming,current,env){
   if(!validSnapshot(incoming)||!validSnapshot(current))return json({error:"Invalid league snapshot"},400);
+  if(current.config?.finalizedAt)return json({error:"League is finalized"},409);
   if(incoming.publishedAt&&current.publishedAt&&incoming.publishedAt!==current.publishedAt)return json({error:"League changed during refresh; reload and try again"},409);
   const existingKeys=new Set(current.games.map(game=>String(game.dedupKey||game.uuid||game.id)));
   const existingUuids=new Set(current.games.map(game=>cleanDisplayName(game.uuid)).filter(Boolean));

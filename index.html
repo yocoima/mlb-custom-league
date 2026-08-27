@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.6.0" />
+  <link rel="stylesheet" href="styles.css?v=3.7.0" />
 </head>
 <body>
   <header class="topbar">
@@ -19,6 +19,7 @@
       <button id="syncBtn" class="btn primary">Actualizar liga</button>
       <button id="statsBtn" class="btn">Recargar estadísticas</button>
       <button id="publishBtn" class="btn">Publicar liga</button>
+      <button id="finishSeasonBtn" class="btn finish">Finalizar torneo</button>
     </div>
   </header>
 
@@ -144,7 +145,22 @@
     </section>
   </main>
 
+  <dialog id="finishSeasonDialog" class="season-dialog">
+    <form id="finishSeasonForm" class="form">
+      <div class="dialog-head"><div><span>Cierre oficial</span><h2>Finalizar torneo</h2></div><button id="cancelFinishBtn" class="dialog-close" type="button" aria-label="Cerrar">×</button></div>
+      <p>Se archivarán el campeón y todos los líderes estadísticos actuales. Después del cierre no se aceptarán juegos nuevos.</p>
+      <label>Campeón<select id="seasonChampion" required></select></label>
+      <label>Subcampeón<select id="seasonRunnerUp"><option value="">No indicar</option></select></label>
+      <div class="two">
+        <label>Resultado de la final<input id="seasonResult" placeholder="Ej. 3-1" maxlength="50" /></label>
+        <label>Nota opcional<input id="seasonNote" placeholder="Ej. Campeón invicto" maxlength="300" /></label>
+      </div>
+      <div id="finishAwardsPreview" class="finish-awards-preview"></div>
+      <div class="actions dialog-actions"><button class="btn" id="cancelFinishFooterBtn" type="button">Cancelar</button><button class="btn finish" type="submit">Confirmar y publicar</button></div>
+    </form>
+  </dialog>
+
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.6.0"></script>
+  <script type="module" src="app.js?v=3.7.0"></script>
 </body>
 </html>

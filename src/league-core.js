@@ -387,3 +387,27 @@ export function pitchingLeaders(acc, sortBy = "so") {
   const compare = comparisons[sortBy] ?? comparisons.so;
   return pitchers.sort((a, b) => compare(a, b) || a.name.localeCompare(b.name));
 }
+
+export function tournamentAwards(acc) {
+  const batting = category => battingLeaders(acc, category);
+  const pitching = category => pitchingLeaders(acc, category);
+  const definitions = [
+    { key:"avg", label:"AVG", title:"Promedio", rows:batting("avg").filter(player=>player.ab>0), metric:player=>player.avg, value:player=>player.avg.toFixed(3).replace(/^0/,"") },
+    { key:"hr", label:"HR", title:"Jonrones", rows:batting("hr"), metric:player=>player.hr, value:player=>String(player.hr), positive:true },
+    { key:"h", label:"H", title:"Hits", rows:batting("h"), metric:player=>player.h, value:player=>String(player.h), positive:true },
+    { key:"rbi", label:"RBI", title:"Impulsadas", rows:batting("rbi"), metric:player=>player.rbi, value:player=>String(player.rbi), positive:true },
+    { key:"sb", label:"SB", title:"Bases robadas", rows:batting("sb"), metric:player=>player.sb, value:player=>String(player.sb), positive:true },
+    { key:"so", label:"SO", title:"Ponches", rows:pitching("so"), metric:player=>player.so, value:player=>String(player.so), positive:true },
+    { key:"era", label:"ERA", title:"Efectividad", rows:pitching("era").filter(player=>player.outs>0), metric:player=>player.era, value:player=>player.era.toFixed(2) },
+    { key:"sv", label:"SV", title:"Salvados", rows:pitching("sv"), metric:player=>player.sv, value:player=>String(player.sv), positive:true }
+  ];
+  return definitions.flatMap(definition=>{
+    const leader=definition.rows[0];
+    if(!leader||(definition.positive&&definition.metric(leader)<=0))return [];
+    const winningValue=definition.metric(leader);
+    const winners=definition.rows.filter(player=>Math.abs(definition.metric(player)-winningValue)<1e-9).slice(0,20).map(player=>({
+      player:player.name,manager:player.manager,team:player.team,value:definition.value(player)
+    }));
+    return [{key:definition.key,label:definition.label,title:definition.title,winners}];
+  });
+}

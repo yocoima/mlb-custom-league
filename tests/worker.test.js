@@ -46,7 +46,7 @@ test("publica con autorización y permite lectura pública",async()=>{
   assert.equal(saved.version,1);
   assert.equal(saved.games[0].dedupKey,"uuid:one");
   assert.equal(saved.stats.batting[0][1].name,"Batter");
-  assert.deepEqual(saved.config.champions,[{season:"Torneo 2025",champion:"friend",team:"Blue Jays",runnerUp:"commissioner",result:"4-2",note:""}]);
+  assert.deepEqual(saved.config.champions,[{season:"Torneo 2025",champion:"friend",team:"Blue Jays",runnerUp:"commissioner",result:"4-2",note:"",finalizedAt:"",awards:[]}]);
   assert.ok(saved.publishedAt);
 });
 
@@ -121,4 +121,21 @@ test("POST /api/league/refresh no duplica un UUID existente con otra clave",asyn
   const response=await worker.fetch(new Request("https://worker.example/api/league/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(incoming)}),env);
   const body=await response.json();
   assert.equal(response.status,200);assert.equal(body.refresh.added,0);assert.equal(body.games.length,1);
+});
+
+test("una liga finalizada rechaza actualizaciones públicas",async()=>{
+  const kv=mockKv();const env={LEAGUE_STORE:kv};
+  const current=snapshot();current.config.finalizedAt="2026-08-30T12:00:00.000Z";
+  await kv.put("public-league-v1",JSON.stringify(current));
+  const response=await worker.fetch(new Request("https://worker.example/api/league/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(current)}),env);
+  assert.equal(response.status,409);assert.equal((await response.json()).error,"League is finalized");
+});
+
+test("publica los lideratos archivados con límites seguros",async()=>{
+  const kv=mockKv();const env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"};
+  const data=snapshot();data.config.finalizedAt="2026-08-30T12:00:00.000Z";
+  data.config.champions[0].awards=[{key:"hr",label:"HR",title:"Jonrones",winners:[{player:"Slugger",manager:"friend",team:"Blue Jays",value:"5"}]}];
+  await worker.fetch(new Request("https://worker.example/api/league",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
+  const saved=await (await worker.fetch(new Request("https://worker.example/api/league"),env)).json();
+  assert.equal(saved.config.finalizedAt,data.config.finalizedAt);assert.equal(saved.config.champions[0].awards[0].winners[0].player,"Slugger");
 });
