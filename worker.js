@@ -1,3 +1,5 @@
+import {cleanDisplayName,sameText,gameParts,isOnOrAfterStartDate,isCompatibleWithRegulationInnings,isFormallyCompletedGame,createStatAccumulator,addGameStats} from "./src/league-core.js";
+
 const API_ORIGIN = "https://mlb26.theshow.com";
 const PLATFORMS = new Set(["psn","xbl","mlbts","nsw"]);
 const LEAGUE_KEY = "public-league-v1";
@@ -21,12 +23,76 @@ function publicChampions(value){
 }
 function publicConfig(config={}){
   return {
-    username:String(config.username||""),platform:"psn",seedGameId:String(config.seedGameId||""),
+    leagueName:String(config.leagueName||""),username:String(config.username||""),platform:"psn",seedGameId:String(config.seedGameId||""),
     myTeam:String(config.myTeam||""),startDate:String(config.startDate||""),
     regulationInnings:Number(config.regulationInnings||5),maxPages:Number(config.maxPages||20),
     proxyBase:String(config.proxyBase||""),roster:config.roster&&typeof config.roster==="object"&&!Array.isArray(config.roster)?config.roster:{},
     champions:publicChampions(config.champions)
   };
+}
+function rosterHas(config,username){
+  const target=cleanDisplayName(username);
+  return Object.entries(config?.roster||{}).some(([key,value])=>{
+    const data=typeof value==="string"?{}:value||{};
+    return sameText(data.username||key,target)||(Array.isArray(data.aliases)&&data.aliases.some(alias=>sameText(alias,target)));
+  })||sameText(config?.username,target);
+}
+function statAccumulator(stats={}){
+  return {batting:new Map(stats.batting||[]),pitching:new Map(stats.pitching||[]),loadedGameIds:new Set(stats.loadedGameIds||[]),failedGameIds:new Set(stats.failedGameIds||[])};
+}
+function serializedStats(acc){return {batting:[...acc.batting.entries()],pitching:[...acc.pitching.entries()],loadedGameIds:[...acc.loadedGameIds],failedGameIds:[...acc.failedGameIds]};}
+async function officialGameLog(records,config){
+  for(const record of records.slice(0,4)){
+    if(!/^\d+$/.test(String(record?.id||""))||!rosterHas(config,record?.username))continue;
+    const url=new URL(`${API_ORIGIN}/apis/game_log.json`);
+    url.searchParams.set("id",String(record.id));url.searchParams.set("username",cleanDisplayName(record.username));url.searchParams.set("platform","psn");
+    try{const response=await fetch(url.toString(),{headers:{Accept:"application/json"},cf:{cacheEverything:true,cacheTtl:31536000}});if(response.ok){const payload=await response.json();if(gameParts(payload).lineScore)return {payload,record};}}catch{}
+  }
+  return null;
+}
+async function refreshLeague(incoming,current,env){
+  if(!validSnapshot(incoming)||!validSnapshot(current))return json({error:"Invalid league snapshot"},400);
+  if(incoming.publishedAt&&current.publishedAt&&incoming.publishedAt!==current.publishedAt)return json({error:"League changed during refresh; reload and try again"},409);
+  const existingKeys=new Set(current.games.map(game=>String(game.dedupKey||game.uuid||game.id)));
+  const existingUuids=new Set(current.games.map(game=>cleanDisplayName(game.uuid)).filter(Boolean));
+  const candidates=incoming.games.filter(game=>!existingKeys.has(String(game.dedupKey||game.uuid||game.id))&&!existingUuids.has(cleanDisplayName(game.uuid)));
+  if(candidates.length>25)return json({error:"Too many new games; refresh again in smaller batches"},413);
+  if(!candidates.length)return json({...current,refresh:{added:0}},200,{"Cache-Control":"no-store"});
+  const participants=current.participants.map(item=>({...item}));
+  const participantByName=name=>participants.find(item=>sameText(item.username,name));
+  const acc=statAccumulator(current.stats);
+  const accepted=[];
+  for(const candidate of candidates){
+    const records=Array.isArray(candidate.apiRecords)&&candidate.apiRecords.length?candidate.apiRecords:[{id:candidate.id,username:candidate.sourceUser}];
+    const official=await officialGameLog(records,current.config);
+    if(!official)continue;
+    const {lineScore}=gameParts(official.payload);
+    if(String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE"||!isFormallyCompletedGame(lineScore)||!isCompatibleWithRegulationInnings(lineScore,current.config.regulationInnings))continue;
+    const uuid=cleanDisplayName(lineScore.game_uuid);
+    if(!uuid||uuid!==cleanDisplayName(candidate.uuid)||existingUuids.has(uuid)||accepted.some(game=>game.uuid===uuid))continue;
+    const home=participantByName(candidate.homeUser),away=participantByName(candidate.awayUser);
+    if(!home||!away||!sameText(home.team,candidate.homeTeam)||!sameText(away.team,candidate.awayTeam))continue;
+    if((lineScore.home_full_name&&!sameText(lineScore.home_full_name,home.team))||(lineScore.away_full_name&&!sameText(lineScore.away_full_name,away.team)))continue;
+    const homePlayerId=String(lineScore.home_player_id||""),awayPlayerId=String(lineScore.away_player_id||"");
+    const homeTeamId=String(lineScore.home_mlb_team_id||""),awayTeamId=String(lineScore.away_mlb_team_id||"");
+    if(!homePlayerId||!awayPlayerId||(home.playerId&&String(home.playerId)!==homePlayerId)||(away.playerId&&String(away.playerId)!==awayPlayerId))continue;
+    if((home.teamId&&String(home.teamId)!==homeTeamId)||(away.teamId&&String(away.teamId)!==awayTeamId))continue;
+    if(participants.some(item=>!sameText(item.username,home.username)&&String(item.playerId||"")===homePlayerId))continue;
+    if(participants.some(item=>!sameText(item.username,away.username)&&String(item.playerId||"")===awayPlayerId))continue;
+    const playedAt=lineScore.created_at||candidate.date;
+    if(!isOnOrAfterStartDate(playedAt,current.config.startDate))continue;
+    Object.assign(home,{playerId:homePlayerId,teamId:homeTeamId,status:"verified"});
+    Object.assign(away,{playerId:awayPlayerId,teamId:awayTeamId,status:"verified"});
+    const game={...candidate,id:String(official.record.id),uuid,dedupKey:`uuid:${uuid}`,date:playedAt||candidate.date,
+      homeScore:Number(lineScore.home_runs),awayScore:Number(lineScore.away_runs),homeResult:cleanDisplayName(lineScore.home_display_result).toUpperCase(),awayResult:cleanDisplayName(lineScore.away_display_result).toUpperCase(),ruling:"0",
+      homePlayerId,awayPlayerId,apiRecords:records.slice(0,4),sourceUser:official.record.username,sourcePlatform:"psn"};
+    accepted.push(game);addGameStats(acc,game,official.payload);
+  }
+  if(!accepted.length)return json({...current,refresh:{added:0,rejected:candidates.length}},200,{"Cache-Control":"no-store"});
+  const now=new Date().toISOString();
+  const snapshot={...current,publishedAt:now,lastSync:now,participants,games:[...current.games,...accepted],stats:serializedStats(acc)};
+  await env.LEAGUE_STORE.put(LEAGUE_KEY,JSON.stringify(snapshot));
+  return json({...snapshot,refresh:{added:accepted.length,rejected:candidates.length-accepted.length}},200,{"Cache-Control":"no-store"});
 }
 function validSnapshot(value){
   return value&&typeof value==="object"&&!Array.isArray(value)&&value.version===1&&
@@ -69,6 +135,14 @@ export default {
         }
         return json({error:"Method not allowed"},405,{Allow:"GET, POST, OPTIONS"});
       }
+      if(url.pathname==="/api/league/refresh"){
+        if(request.method!=="POST")return json({error:"Method not allowed"},405,{Allow:"POST, OPTIONS"});
+        if(!env.LEAGUE_STORE)return json({error:"League storage is not configured"},503);
+        const current=await env.LEAGUE_STORE.get(LEAGUE_KEY,"json");
+        if(!current)return json({error:"League has not been published"},404);
+        let incoming;try{incoming=await request.json()}catch{return json({error:"Invalid JSON"},400)}
+        return refreshLeague(incoming,current,env);
+      }
       if(request.method!=="GET") return json({error:"Method not allowed"},405);
       if(url.pathname==="/api/history"){
         const username=url.searchParams.get("username")||"";
@@ -88,7 +162,7 @@ export default {
         upstream.searchParams.set("id",id);upstream.searchParams.set("username",username);upstream.searchParams.set("platform",platform);
         return proxy(upstream,86400);
       }
-      return json({ok:true,service:"MLB The Show 26 Custom League proxy",routes:["/api/history","/api/game-log","/api/league"]});
+      return json({ok:true,service:"MLB The Show 26 Custom League proxy",routes:["/api/history","/api/game-log","/api/league","/api/league/refresh"]});
     }catch(error){return json({error:error?.message||"Proxy error"},502);}
   }
 };

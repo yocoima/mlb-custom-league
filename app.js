@@ -18,7 +18,7 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.5.0";
+} from "./src/league-core.js?v=3.6.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -34,11 +34,12 @@ const state = {
   stats: createStatAccumulator(),
   lastSync: null,
   publishedAt: null,
+  dataSeasonKey: null,
   warnings: []
 };
 
 function defaultConfig(){
-  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[] };
+  return { leagueName:"", username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[] };
 }
 function loadConfigV3Only(){
   try { return {...defaultConfig(), ...JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")}; }
@@ -57,7 +58,7 @@ function loadConfig(){
 function saveConfig(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.config)); }
 function saveState(){
   const safe = {
-    participants:[...state.participants.values()], games:[...state.games.values()].map(g=>({...g,dateValue:g.dateValue?.toISOString?.()||null})), lastSync:state.lastSync,publishedAt:state.publishedAt
+    participants:[...state.participants.values()], games:[...state.games.values()].map(g=>({...g,dateValue:g.dateValue?.toISOString?.()||null})), lastSync:state.lastSync,publishedAt:state.publishedAt,dataSeasonKey:state.dataSeasonKey
   };
   localStorage.setItem(STATE_KEY, JSON.stringify(safe));
 }
@@ -68,6 +69,7 @@ function loadState(){
     for(const g of saved.games||[]) state.games.set(String(g.dedupKey||g.uuid||g.id),{...g,dateValue:g.dateValue?new Date(g.dateValue):null});
     state.lastSync=saved.lastSync||null;
     state.publishedAt=saved.publishedAt||null;
+    state.dataSeasonKey=saved.dataSeasonKey||null;
   }catch{}
 }
 
@@ -84,7 +86,7 @@ function publicSnapshot(){
 }
 
 function applyPublishedSnapshot(snapshot){
-  state.config={...defaultConfig(),...(snapshot.config||{}),platform:"psn",proxyBase:snapshot.config?.proxyBase||DEFAULT_PROXY_BASE};
+  state.config={...defaultConfig(),...(snapshot.config||{}),leagueName:snapshot.config?.leagueName||"Liga actual",platform:"psn",proxyBase:snapshot.config?.proxyBase||DEFAULT_PROXY_BASE};
   state.participants.clear();
   state.games.clear();
   for(const participant of snapshot.participants||[])state.participants.set(participantKey(participant.username),participant);
@@ -95,6 +97,7 @@ function applyPublishedSnapshot(snapshot){
   };
   state.lastSync=snapshot.lastSync||null;
   state.publishedAt=snapshot.publishedAt||null;
+  state.dataSeasonKey=seasonConfigKey(state.config);
   state.warnings=[];
   saveConfig();saveState();fillForm();render();
 }
@@ -103,6 +106,17 @@ function validPublishedSnapshot(snapshot){
   return snapshot?.version===1&&Array.isArray(snapshot.participants)&&Array.isArray(snapshot.games)&&
     Array.isArray(snapshot.stats?.batting)&&Array.isArray(snapshot.stats?.pitching)&&
     Array.isArray(snapshot.stats?.loadedGameIds)&&Array.isArray(snapshot.stats?.failedGameIds);
+}
+
+function seasonConfigKey(config){
+  const roster=[...configuredRoster(config).values()].map(participant=>({
+    username:participantKey(participant.username),team:cleanDisplayName(participant.team).toLowerCase(),
+    aliases:[...(participant.aliases||[])].map(participantKey).sort()
+  })).sort((a,b)=>a.username.localeCompare(b.username));
+  return JSON.stringify({
+    leagueName:cleanDisplayName(config.leagueName).toLowerCase(),commissioner:participantKey(config.username),
+    startDate:String(config.startDate||""),regulationInnings:Number(config.regulationInnings),roster
+  });
 }
 
 function esc(v){ return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -133,6 +147,7 @@ function formToConfig(){
   const platform=$("#platform").value;
   if(!PLATFORM_VALUES.includes(platform)) throw new Error("Plataforma inválida.");
   const config={
+    leagueName:cleanDisplayName($("#leagueName").value),
     username:cleanDisplayName($("#username").value), platform,
     seedGameId:$("#seedGameId").value.trim(), myTeam:cleanDisplayName($("#myTeam").value),
     startDate:$("#startDate").value,
@@ -140,10 +155,12 @@ function formToConfig(){
     maxPages:Math.min(100,Math.max(1,Number($("#maxPages").value)||20)),
     proxyBase:$("#proxyBase").value.trim().replace(/\/$/,""), roster, champions
   };
+  if(!config.leagueName)throw new Error("Indica el nombre del torneo.");
   configuredRoster(config);
   return config;
 }
 function fillForm(){
+  $("#leagueName").value=state.config.leagueName||"";
   $("#username").value=state.config.username; $("#platform").value=state.config.platform;
   $("#seedGameId").value=state.config.seedGameId; $("#myTeam").value=state.config.myTeam;
   $("#startDate").value=state.config.startDate||""; $("#regulationInnings").value=state.config.regulationInnings||5; $("#maxPages").value=state.config.maxPages;
@@ -186,14 +203,16 @@ async function loadPublishedLeague(){
   }
   const localSync=state.lastSync?new Date(state.lastSync).getTime():0;
   const remoteSync=snapshot.lastSync?new Date(snapshot.lastSync).getTime():0;
-  if(localSync>remoteSync){setStatus("Hay una actualización local más reciente pendiente de publicar.");return;}
+  const remoteConfig={...defaultConfig(),...(snapshot.config||{}),leagueName:snapshot.config?.leagueName||"Liga actual"};
+  const sameSeason=state.dataSeasonKey&&state.dataSeasonKey===seasonConfigKey(remoteConfig);
+  if(sameSeason&&localSync>remoteSync){setStatus("Hay una actualización local más reciente pendiente de publicar.");return;}
   applyPublishedSnapshot(snapshot);
   setStatus(`Liga pública cargada: ${state.participants.size} participantes y ${state.games.size} partidos.`,"success");
 }
 
 async function publishLeague(){
-  if(!state.games.size)throw new Error("Primero actualiza la liga.");
-  if(state.stats.loadedGameIds.size+state.stats.failedGameIds.size!==state.games.size)throw new Error("Carga las estadísticas antes de publicar.");
+  configuredRoster(state.config);
+  if(state.games.size&&state.stats.loadedGameIds.size+state.stats.failedGameIds.size!==state.games.size)throw new Error("Carga las estadísticas antes de publicar.");
   const token=window.prompt("Clave privada de publicación de la liga:");
   if(!token)return;
   const response=await fetch(leagueApiUrl(),{
@@ -209,6 +228,19 @@ async function publishLeague(){
   state.publishedAt=result.publishedAt||new Date().toISOString();
   saveState();
   setStatus(`Liga publicada: ${result.participants} participantes y ${result.games} partidos.`,"success");
+}
+
+async function refreshSharedLeague(){
+  const response=await fetch(`${leagueApiUrl()}/refresh`,{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify(publicSnapshot())});
+  let result={};try{result=await response.json()}catch{}
+  if(!response.ok){
+    if(response.status===409)throw new Error("Otro usuario actualizó la liga mientras trabajabas. Recarga la página y pulsa Actualizar liga nuevamente.");
+    throw new Error(result.error||`No se pudo actualizar la liga pública (HTTP ${response.status}).`);
+  }
+  const added=Number(result.refresh?.added||0),rejected=Number(result.refresh?.rejected||0);
+  applyPublishedSnapshot(result);
+  if(rejected)warn(`${rejected} partidos candidatos no superaron la validación oficial del servidor.`);
+  setStatus(added?`Liga pública actualizada: ${added} partido${added===1?"":"s"} nuevo${added===1?"":"s"} y estadísticas recalculadas.`:"La liga pública ya estaba al día.","success");
 }
 
 async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}) {
@@ -235,6 +267,7 @@ async function fetchAllHistory(username, platform, maxPages, onProgress = () => 
     if (!pageRows.length) {
       break;
     }
+    if(pageRows.every(row=>!isOnOrAfterStartDate(row?.display_date,state.config.startDate)))break;
   }
 
   return rows;
@@ -264,6 +297,21 @@ function configuredRoster(config=state.config){
   if(roster.size<2) throw new Error("Configura al menos dos participantes con sus equipos.");
   if(!roster.has(primaryKey)) throw new Error("Incluye al usuario principal en el roster o completa 'Mi equipo'.");
   return roster;
+}
+
+function loadConfiguredParticipants(){
+  state.participants.clear();
+  for(const participant of configuredRoster(state.config).values())addParticipant(participant);
+}
+
+function startNewSeason(){
+  if(!window.confirm("Se preparará una temporada nueva. La liga pública actual no cambiará hasta que guardes y publiques."))return;
+  state.config={...state.config,leagueName:"",seedGameId:"",startDate:""};
+  state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.publishedAt=null;state.dataSeasonKey=null;state.warnings=[];
+  state.participants.clear();saveConfig();saveState();fillForm();render();
+  document.querySelector('[data-tab="settings"]').click();
+  $("#leagueName").focus();
+  setStatus("Nueva temporada preparada. Puedes cambiar nombre, comisionado, participantes, equipos e innings antes de guardarla y publicarla.","success");
 }
 
 function rosterMemberForName(name,roster){
@@ -350,11 +398,23 @@ function excludedGameLabel(game,lineScore){
 }
 
 async function discoverLeague(){
-  state.warnings=[]; state.participants.clear(); state.games.clear(); state.stats=createStatAccumulator();
   const cfg=state.config;
   if(!cfg.username) throw new Error("Ingresa tu usuario de The Show.");
   const roster=configuredRoster(cfg);
-  for(const participant of roster.values())addParticipant(participant);
+  const nextSeasonKey=seasonConfigKey(cfg);
+  const sameSeason=state.dataSeasonKey===nextSeasonKey;
+  const previousParticipants=sameSeason?new Map(state.participants):new Map();
+  if(!sameSeason){state.games.clear();state.stats=createStatAccumulator();}
+  state.warnings=[];state.participants.clear();
+  for(const participant of roster.values()){
+    const previous=previousParticipants.get(participantKey(participant.username));
+    addParticipant(previous&&sameText(previous.team,participant.team)
+      ?{...participant,playerId:previous.playerId,teamId:previous.teamId,status:previous.status}
+      :participant);
+  }
+  const existingByFingerprint=new Map([...state.games.values()].map(game=>[gameFingerprint(game),game]));
+  const existingByRecord=new Map();
+  for(const game of state.games.values())for(const record of game.apiRecords||[])existingByRecord.set(`${record.id}|${participantKey(record.username)}`,game);
   const candidateGroups=new Map();
   let seedFound=!cfg.seedGameId;
   let seedSeenInHistory=!cfg.seedGameId;
@@ -397,6 +457,11 @@ async function discoverLeague(){
   const inningsDetails=[];
   for(const [fingerprint,candidates] of candidateGroups){
     checked++;
+    const knownGame=candidates.map(candidate=>existingByRecord.get(`${candidate.record.id}|${participantKey(candidate.record.username)}`)).find(Boolean)||existingByFingerprint.get(fingerprint);
+    if(knownGame){
+      knownGame.apiRecords=mergeApiRecords(knownGame.apiRecords,candidates.map(candidate=>candidate.record));
+      continue;
+    }
     setStatus(`Validando partidos y UUID: ${checked}/${candidateGroups.size}…`);
     let payload=null;
     let usedCandidate=candidates[0];
@@ -450,7 +515,7 @@ async function discoverLeague(){
   if(excludedUnfinished)warn(`${excludedUnfinished} partidos interrumpidos, empatados o decididos por ruling se excluyeron: ${unfinishedDetails.join("; ")}.`);
   if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas: ${inningsDetails.join("; ")}.`);
   if(!state.games.size) throw new Error("No se pudieron validar partidos pertenecientes a la liga configurada.");
-  state.lastSync=new Date().toISOString(); saveState(); render();
+  state.lastSync=new Date().toISOString();state.dataSeasonKey=nextSeasonKey;saveState();render();
   setStatus(`Liga configurada: ${state.participants.size} participantes y ${state.games.size} partidos LEAGUE únicos.`,"success");
 }
 
@@ -461,9 +526,12 @@ async function mapLimit(items,limit,fn){
 }
 
 async function loadStats(){
-  const games=[...state.games.values()]; if(!games.length) throw new Error("Primero actualiza la liga.");
-  state.stats=createStatAccumulator(); let done=0;
+  const allGames=[...state.games.values()]; if(!allGames.length) throw new Error("Primero actualiza la liga.");
+  const games=allGames.filter(game=>!state.stats.loadedGameIds.has(game.id));
+  if(!games.length){render();setStatus(`Las estadísticas ya están al día para ${allGames.length}/${allGames.length} partidos.`,"success");return;}
+  let done=0;
   await mapLimit(games,4,async game=>{
+    state.stats.failedGameIds.delete(game.id);
     const candidates=(game.apiRecords?.length?game.apiRecords:[{id:game.id,username:game.sourceUser,platform:game.sourcePlatform}]);
     let payload=null;
     for(const record of candidates){
@@ -474,7 +542,7 @@ async function loadStats(){
     done++; setStatus(`Cargando Game Logs: ${done}/${games.length}…`); render();
   });
   if(state.stats.failedGameIds.size) warn(`${state.stats.failedGameIds.size} Game Logs no pudieron cargarse; las estadísticas se muestran con cobertura parcial.`);
-  render(); setStatus(`Estadísticas cargadas para ${state.stats.loadedGameIds.size}/${games.length} partidos.`,"success");
+  render(); setStatus(`Estadísticas cargadas para ${state.stats.loadedGameIds.size}/${allGames.length} partidos.`,"success");
 }
 
 function leaderCard(title,subtitle,players,value){
@@ -492,7 +560,9 @@ function renderLeaders(){
     leaderCard("Hits","H",battingBy("h"),player=>player.h),
     leaderCard("Impulsadas","RBI",battingBy("rbi"),player=>player.rbi),
     leaderCard("Bases robadas","SB",battingBy("sb"),player=>player.sb),
-    leaderCard("Ponches","SO · Pitcheo",pitching,player=>player.so)
+    leaderCard("Ponches","SO · Pitcheo",pitching,player=>player.so),
+    leaderCard("Efectividad","ERA",pitchingLeaders(state.stats,"era").filter(player=>player.outs>0),player=>player.era.toFixed(2)),
+    leaderCard("Salvados","SV",pitchingLeaders(state.stats,"sv"),player=>player.sv)
   ].join("");
 }
 
@@ -511,6 +581,9 @@ function renderChampions(){
 function render(){
   const games=[...state.games.values()].sort((a,b)=>(b.dateValue?.getTime?.()||0)-(a.dateValue?.getTime?.()||0));
   const standings=calculateStandings(games,[...state.participants.values()]);
+  const leagueName=cleanDisplayName(state.config.leagueName);
+  $("#currentLeagueName").textContent=leagueName?`${leagueName} · Solo Custom League`:"Solo Custom League · Game History + Game Log";
+  document.title=leagueName?`${leagueName} — MLB The Show 26`:`MLB The Show 26 — Custom League Manager`;
   $("#participantCount").textContent=state.participants.size;
   $("#gameCount").textContent=games.length;
   $("#logCount").textContent=state.stats.loadedGameIds.size;
@@ -560,10 +633,11 @@ async function importHistoryFile(file){
   saveState(); render(); setStatus(`Importados ${imported} partidos que coinciden con roster y fecha.`,"success");
 }
 
-$("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();saveConfig();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
-$("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;await discoverLeague()}catch(e){setStatus(e.message,"error")}finally{$("#syncBtn").disabled=false}});
+$("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();if(!state.games.size)loadConfiguredParticipants();saveConfig();saveState();render();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
+$("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;$("#statsBtn").disabled=true;await discoverLeague();await loadStats();await refreshSharedLeague()}catch(e){setStatus(e.message,"error")}finally{$("#syncBtn").disabled=false;$("#statsBtn").disabled=false}});
 $("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{$("#statsBtn").disabled=false}});
 $("#publishBtn").addEventListener("click",async()=>{try{$("#publishBtn").disabled=true;await publishLeague()}catch(e){setStatus(e.message,"error")}finally{$("#publishBtn").disabled=false}});
+$("#newSeasonBtn").addEventListener("click",startNewSeason);
 $("#clearBtn").addEventListener("click",()=>{localStorage.removeItem(STATE_KEY);state.participants.clear();state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.warnings=[];render();setStatus("Datos locales eliminados.")});
 $("#historyFile").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;try{await importHistoryFile(f)}catch(err){setStatus(err.message,"error")}finally{e.target.value=""}});
 $("#battingSort").addEventListener("change",render);

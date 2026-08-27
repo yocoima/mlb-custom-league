@@ -13,7 +13,7 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - obtiene `player_id` desde `Game Log` para verificar identidades;
 - deduplica el mismo partido globalmente mediante `game_uuid`;
 - calcula standings: GP, W, L, PCT, RF, RA, DIFF y forma reciente;
-- carga `Game Log` bajo demanda para estadísticas de bateo y pitcheo;
+- carga `Game Log` incrementalmente para estadísticas de bateo y pitcheo;
 - ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
 - muestra un panel resumido de líderes y un historial manual de campeones;
 - adapta navegación, tarjetas y standings para pantallas de teléfono;
@@ -84,9 +84,14 @@ https://mlb26-custom-league-proxy.<tu-subdominio>.workers.dev
 
 Pégala en **Configuración -> URL del Cloudflare Worker / proxy**.
 
-## Publicar la liga para todos
+## Publicar y actualizar la liga para todos
 
-El frontend puede guardar un snapshot público con participantes, partidos y estadísticas en Workers KV. Los visitantes cargan automáticamente ese snapshot mediante `GET /api/league`; solamente el comisionado puede reemplazarlo mediante `POST /api/league`.
+El frontend guarda un snapshot público con configuración, participantes, partidos y estadísticas en Workers KV. Los visitantes lo cargan automáticamente mediante `GET /api/league`.
+
+Hay dos niveles de operación:
+
+- cualquier visitante puede pulsar **Actualizar liga**; el navegador busca candidatos nuevos y `POST /api/league/refresh` hace que el Worker vuelva a consultar el Game Log oficial antes de agregarlos al snapshot compartido;
+- solamente el comisionado puede cambiar nombre del torneo, comisionado, roster, fecha inicial, innings, campeones o iniciar otra temporada mediante el `POST /api/league` protegido.
 
 Configuración inicial, una sola vez:
 
@@ -111,11 +116,22 @@ npm run deploy:worker
 
 En la aplicación:
 
-1. pulsa **Actualizar liga**;
-2. pulsa **Cargar estadísticas**;
+1. configura el torneo y guarda;
+2. pulsa **Actualizar liga** para obtener los juegos y estadísticas disponibles;
 3. pulsa **Publicar liga** e introduce la clave privada.
 
-Cuando haya partidos nuevos, el comisionado debe repetir esos tres pasos. **Actualizar liga** y **Cargar estadísticas** modifican solamente el navegador donde se ejecutan; los amigos no cambian la versión compartida. Ellos reciben automáticamente la última publicación disponible al abrir o recargar la página.
+Cuando haya partidos nuevos, cualquier amigo puede pulsar **Actualizar liga**. No necesita la clave ni modificar Configuración: la actualización aceptada queda guardada para todos. **Recargar estadísticas** solo reintenta Game Logs que hayan fallado en el navegador actual; normalmente no es necesario porque **Actualizar liga** ya procesa los datos nuevos.
+
+El Worker limita cada actualización pública a 25 candidatos y nunca confía en el marcador ni en las estadísticas enviados por el navegador. Verifica modo `LEAGUE`, UUID, roster, equipos, identidades, fecha, innings y finalización contra la API oficial antes de escribir en KV.
+
+## Iniciar un torneo nuevo
+
+1. En **Configuración**, pulsa **Nueva temporada**.
+2. Cambia el nombre del torneo, comisionado, participantes/equipos, fecha inicial e innings reglamentarios.
+3. Guarda la configuración.
+4. Pulsa **Publicar liga** e introduce la clave privada.
+
+La publicación inicial puede tener cero juegos. Desde ese momento todos reciben la nueva configuración y cualquiera puede incorporar los primeros resultados con **Actualizar liga**. El historial de campeones se conserva como punto de partida y puede editarse antes de publicar.
 
 ## Historial de campeones
 
@@ -143,6 +159,7 @@ El Worker permite estas rutas:
 - `/api/history`
 - `/api/game-log`
 - `/api/league` (`GET` público y `POST` protegido)
+- `/api/league/refresh` (`POST` público con verificación oficial y configuración inmutable)
 
 No maneja credenciales privadas y fuerza `mode=all` para Game History.
 

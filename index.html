@@ -6,18 +6,18 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.5.0" />
+  <link rel="stylesheet" href="styles.css?v=3.6.0" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">MLB THE SHOW 26</div>
       <h1>Custom League Manager</h1>
-      <p>Solo Custom League · Game History + Game Log</p>
+      <p id="currentLeagueName">Solo Custom League · Game History + Game Log</p>
     </div>
     <div class="top-actions">
       <button id="syncBtn" class="btn primary">Actualizar liga</button>
-      <button id="statsBtn" class="btn">Cargar estadísticas</button>
+      <button id="statsBtn" class="btn">Recargar estadísticas</button>
       <button id="publishBtn" class="btn">Publicar liga</button>
     </div>
   </header>
@@ -96,18 +96,19 @@
       <div class="panel-head"><div><h2>Configuración</h2><p>No se usan cookies, contraseñas ni datos de Diamond Dynasty.</p></div></div>
       <form id="settingsForm" class="form">
         <div class="two">
-          <label>Usuario de The Show<input id="username" autocomplete="off" placeholder="tu_usuario" required /></label>
-          <label>Plataforma<select id="platform"><option value="psn">PSN</option></select></label>
+          <label>Nombre del torneo<input id="leagueName" autocomplete="off" placeholder="Ej. Reclutas V2" required /></label>
+          <label>Comisionado / usuario principal<input id="username" autocomplete="off" placeholder="tu_usuario" required /></label>
         </div>
         <div class="two">
-          <label>Game ID semilla (validación opcional)<input id="seedGameId" inputmode="numeric" placeholder="Ej. 1690641801" /></label>
+          <label>Plataforma<select id="platform"><option value="psn">PSN</option></select></label>
           <label>Mi equipo en esta liga<input id="myTeam" placeholder="Ej. Tigers" required /></label>
         </div>
         <div class="two">
+          <label>Game ID semilla (validación opcional)<input id="seedGameId" inputmode="numeric" placeholder="Ej. 1690641801" /></label>
           <label>Inicio de esta temporada<input id="startDate" type="date" required /></label>
-          <label>Entradas reglamentarias<input id="regulationInnings" type="number" min="1" max="9" value="5" required /></label>
         </div>
         <div class="two">
+          <label>Entradas reglamentarias<input id="regulationInnings" type="number" min="1" max="9" value="5" required /></label>
           <label>Máx. páginas por participante<input id="maxPages" type="number" min="1" max="100" value="20" /></label>
         </div>
         <label>URL del Cloudflare Worker / proxy (opcional)<input id="proxyBase" placeholder="https://mlb26-custom-league-proxy.usuario.workers.dev" /></label>
@@ -131,6 +132,7 @@
         </label>
         <div class="actions">
           <button class="btn primary" type="submit">Guardar configuración</button>
+          <button class="btn" id="newSeasonBtn" type="button">Nueva temporada</button>
           <button class="btn" id="clearBtn" type="button">Limpiar datos locales</button>
           <label class="btn file-btn">Importar Game History JSON<input id="historyFile" type="file" accept="application/json,.json,.md,.txt" /></label>
         </div>
@@ -143,6 +145,6 @@
   </main>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.5.0"></script>
+  <script type="module" src="app.js?v=3.6.0"></script>
 </body>
 </html>

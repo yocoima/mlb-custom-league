@@ -127,6 +127,15 @@ test("ordena líderes de pitcheo por ponches",()=>{
   assert.equal(pitchingLeaders(acc,"so")[0].name,"Pitcher B");
 });
 
+test("ordena líderes de pitcheo por efectividad y salvados",()=>{
+  const acc=createStatAccumulator();
+  const base={manager:"Manager",team:"Tigers",g:2,outs:15,h:2,r:1,bb:1,w:0,l:0,bs:0,hold:0,so:4};
+  acc.pitching.set("era",{...base,name:"Mejor ERA",er:0,sv:0});
+  acc.pitching.set("saves",{...base,name:"Cerrador",er:2,sv:3});
+  assert.equal(pitchingLeaders(acc,"era")[0].name,"Mejor ERA");
+  assert.equal(pitchingLeaders(acc,"sv")[0].name,"Cerrador");
+});
+
 test("consolida el mismo jugador aunque cambie p_inx, posición o decisión",()=>{
   const acc=createStatAccumulator();
   const gameBase={homeTeam:"Tigers",awayTeam:"Diamondbacks",homeUser:"Manager",awayUser:"Rival"};
