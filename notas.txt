@@ -1,0 +1,27 @@
+{
+  "yocoima_herrera": "Tigers",
+  "Gaboandres20": "Diamondbacks",
+  "LeyP9": "Red Sox",
+  "Hanscristians": "Dodgers",
+  "Yermain10": "Brewers",
+  "gabrielVzla170": "Yankees",
+  "anzony0702": "Braves",
+  "Angelotti0611": "Phillies",
+  "hector-gali07": "Blue Jays"
+}
+
+
+yocoima_herrera
+
+1690641801
+
+[
+  {
+    "season": "Torneo agosto 2026",
+    "champion": "Yermain10",
+    "team": "Brewers",
+    "runnerUp": "yocoima_herrera",
+    "result": "4-2",
+    "note": "Primer campeón oficial"
+  }
+]
