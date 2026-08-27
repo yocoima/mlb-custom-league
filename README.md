@@ -82,6 +82,39 @@ https://mlb26-custom-league-proxy.<tu-subdominio>.workers.dev
 
 Pégala en **Configuración -> URL del Cloudflare Worker / proxy**.
 
+## Publicar la liga para todos
+
+El frontend puede guardar un snapshot público con participantes, partidos y estadísticas en Workers KV. Los visitantes cargan automáticamente ese snapshot mediante `GET /api/league`; solamente el comisionado puede reemplazarlo mediante `POST /api/league`.
+
+Configuración inicial, una sola vez:
+
+```bash
+npx wrangler login
+npx wrangler kv namespace create LEAGUE_STORE
+```
+
+Si el OAuth del navegador falla, crea un API Token con el template **Edit Cloudflare Workers**, copia `.env.example` como `.env` y completa `CLOUDFLARE_ACCOUNT_ID` y `CLOUDFLARE_API_TOKEN`. El archivo `.env` está ignorado por Git y Wrangler lo carga automáticamente:
+
+```bash
+npx wrangler whoami
+npx wrangler kv namespace create LEAGUE_STORE
+```
+
+Copia el `id` devuelto por Wrangler y habilita el bloque `[[kv_namespaces]]` de `wrangler.toml`. Después configura una clave privada; Wrangler la solicita de forma interactiva y no debe escribirse en ningún archivo:
+
+```bash
+npx wrangler secret put LEAGUE_PUBLISH_TOKEN
+npm run deploy:worker
+```
+
+En la aplicación:
+
+1. pulsa **Actualizar liga**;
+2. pulsa **Cargar estadísticas**;
+3. pulsa **Publicar liga** e introduce la clave privada.
+
+La clave solo se mantiene durante esa petición. No se guarda en `localStorage`, KV ni GitHub. Workers KV está optimizado para lecturas y sus cambios pueden tardar hasta aproximadamente 60 segundos en propagarse globalmente.
+
 El Worker solo permite dos rutas:
 
 - `/api/history`

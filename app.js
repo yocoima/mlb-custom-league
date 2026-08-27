@@ -18,13 +18,14 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.3.2";
+} from "./src/league-core.js?v=3.4.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
 const STATE_KEY = "mlb26_custom_league_state_v3";
 const LEGACY_STORAGE_KEY = "mlb26_custom_league_config_v2";
 const API_ORIGIN = "https://mlb26.theshow.com";
+const DEFAULT_PROXY_BASE = "https://mlb26-custom-league-proxy.yocoimadejesus.workers.dev";
 
 const state = {
   config: loadConfig(),
@@ -32,11 +33,12 @@ const state = {
   games: new Map(),
   stats: createStatAccumulator(),
   lastSync: null,
+  publishedAt: null,
   warnings: []
 };
 
 function defaultConfig(){
-  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:"", roster:{} };
+  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{} };
 }
 function loadConfigV3Only(){
   try { return {...defaultConfig(), ...JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")}; }
@@ -55,7 +57,7 @@ function loadConfig(){
 function saveConfig(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.config)); }
 function saveState(){
   const safe = {
-    participants:[...state.participants.values()], games:[...state.games.values()].map(g=>({...g,dateValue:g.dateValue?.toISOString?.()||null})), lastSync:state.lastSync
+    participants:[...state.participants.values()], games:[...state.games.values()].map(g=>({...g,dateValue:g.dateValue?.toISOString?.()||null})), lastSync:state.lastSync,publishedAt:state.publishedAt
   };
   localStorage.setItem(STATE_KEY, JSON.stringify(safe));
 }
@@ -65,7 +67,42 @@ function loadState(){
     for(const p of saved.participants||[]) state.participants.set(participantKey(p.username),p);
     for(const g of saved.games||[]) state.games.set(String(g.dedupKey||g.uuid||g.id),{...g,dateValue:g.dateValue?new Date(g.dateValue):null});
     state.lastSync=saved.lastSync||null;
+    state.publishedAt=saved.publishedAt||null;
   }catch{}
+}
+
+function publicSnapshot(){
+  return {
+    version:1,lastSync:state.lastSync,config:{...state.config,platform:"psn",proxyBase:state.config.proxyBase||DEFAULT_PROXY_BASE},
+    participants:[...state.participants.values()],
+    games:[...state.games.values()].map(({raw,...game})=>({...game,dateValue:game.dateValue?.toISOString?.()||null})),
+    stats:{
+      batting:[...state.stats.batting.entries()],pitching:[...state.stats.pitching.entries()],
+      loadedGameIds:[...state.stats.loadedGameIds],failedGameIds:[...state.stats.failedGameIds]
+    }
+  };
+}
+
+function applyPublishedSnapshot(snapshot){
+  state.config={...defaultConfig(),...(snapshot.config||{}),platform:"psn",proxyBase:snapshot.config?.proxyBase||DEFAULT_PROXY_BASE};
+  state.participants.clear();
+  state.games.clear();
+  for(const participant of snapshot.participants||[])state.participants.set(participantKey(participant.username),participant);
+  for(const game of snapshot.games||[])state.games.set(String(game.dedupKey||game.uuid||game.id),{...game,dateValue:game.dateValue?new Date(game.dateValue):null});
+  state.stats={
+    batting:new Map(snapshot.stats?.batting||[]),pitching:new Map(snapshot.stats?.pitching||[]),
+    loadedGameIds:new Set(snapshot.stats?.loadedGameIds||[]),failedGameIds:new Set(snapshot.stats?.failedGameIds||[])
+  };
+  state.lastSync=snapshot.lastSync||null;
+  state.publishedAt=snapshot.publishedAt||null;
+  state.warnings=[];
+  saveConfig();saveState();fillForm();render();
+}
+
+function validPublishedSnapshot(snapshot){
+  return snapshot?.version===1&&Array.isArray(snapshot.participants)&&Array.isArray(snapshot.games)&&
+    Array.isArray(snapshot.stats?.batting)&&Array.isArray(snapshot.stats?.pitching)&&
+    Array.isArray(snapshot.stats?.loadedGameIds)&&Array.isArray(snapshot.stats?.failedGameIds);
 }
 
 function esc(v){ return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -106,8 +143,9 @@ function apiUrl(kind, params){
   if(kind==="game-log") return `${API_ORIGIN}/apis/game_log.json?${q}`;
   throw new Error("Endpoint desconocido");
 }
-async function fetchJson(url){
-  const r=await fetch(url,{headers:{Accept:"application/json"}});
+function leagueApiUrl(){return `${state.config.proxyBase||DEFAULT_PROXY_BASE}/api/league`;}
+async function fetchJson(url,options={}){
+  const r=await fetch(url,{...options,headers:{Accept:"application/json",...(options.headers||{})}});
   if(!r.ok) throw new Error(`HTTP ${r.status}`);
   const text=await r.text();
   try{return JSON.parse(text)}catch{throw new Error("La API no devolvió JSON válido.")}
@@ -117,6 +155,46 @@ async function fetchHistoryPage(username,platform,page){
   return fetchJson(apiUrl("history",{username,platform,page:String(page),mode:"all"}));
 }
 async function fetchGameLog(id,username,platform){ return fetchJson(apiUrl("game-log",{id:String(id),username,platform})); }
+
+async function loadPublishedLeague(){
+  let response;
+  try{response=await fetch(leagueApiUrl(),{headers:{Accept:"application/json"},cache:"no-store"})}catch{
+    if(!state.games.size)setStatus("No se pudo conectar con la liga pública.","error");
+    return;
+  }
+  if(response.status===404)return;
+  if(!response.ok){if(!state.games.size)setStatus(`No se pudo cargar la liga pública (HTTP ${response.status}).`,"error");return;}
+  const snapshot=await response.json();
+  if(!validPublishedSnapshot(snapshot)){
+    if(!state.games.size)setStatus("La liga pública todavía no está configurada.");
+    return;
+  }
+  const localSync=state.lastSync?new Date(state.lastSync).getTime():0;
+  const remoteSync=snapshot.lastSync?new Date(snapshot.lastSync).getTime():0;
+  if(localSync>remoteSync){setStatus("Hay una actualización local más reciente pendiente de publicar.");return;}
+  applyPublishedSnapshot(snapshot);
+  setStatus(`Liga pública cargada: ${state.participants.size} participantes y ${state.games.size} partidos.`,"success");
+}
+
+async function publishLeague(){
+  if(!state.games.size)throw new Error("Primero actualiza la liga.");
+  if(state.stats.loadedGameIds.size+state.stats.failedGameIds.size!==state.games.size)throw new Error("Carga las estadísticas antes de publicar.");
+  const token=window.prompt("Clave privada de publicación de la liga:");
+  if(!token)return;
+  const response=await fetch(leagueApiUrl(),{
+    method:"POST",headers:{Accept:"application/json","Content-Type":"application/json",Authorization:`Bearer ${token}`},
+    body:JSON.stringify(publicSnapshot())
+  });
+  let result={};
+  try{result=await response.json()}catch{}
+  if(!response.ok){
+    if(response.status===401)throw new Error("Clave de publicación incorrecta.");
+    throw new Error(result.error||`No se pudo publicar (HTTP ${response.status}).`);
+  }
+  state.publishedAt=result.publishedAt||new Date().toISOString();
+  saveState();
+  setStatus(`Liga publicada: ${result.participants} participantes y ${result.games} partidos.`,"success");
+}
 
 async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}) {
   const rows = [];
@@ -436,10 +514,11 @@ async function importHistoryFile(file){
 $("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();saveConfig();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
 $("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;await discoverLeague()}catch(e){setStatus(e.message,"error")}finally{$("#syncBtn").disabled=false}});
 $("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{$("#statsBtn").disabled=false}});
+$("#publishBtn").addEventListener("click",async()=>{try{$("#publishBtn").disabled=true;await publishLeague()}catch(e){setStatus(e.message,"error")}finally{$("#publishBtn").disabled=false}});
 $("#clearBtn").addEventListener("click",()=>{localStorage.removeItem(STATE_KEY);state.participants.clear();state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.warnings=[];render();setStatus("Datos locales eliminados.")});
 $("#historyFile").addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;try{await importHistoryFile(f)}catch(err){setStatus(err.message,"error")}finally{e.target.value=""}});
 $("#battingSort").addEventListener("change",render);
 $("#pitchingSort").addEventListener("change",render);
 document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));btn.classList.add("active");$("#"+btn.dataset.tab).classList.add("active")}));
 
-loadState();fillForm();render();
+loadState();fillForm();render();loadPublishedLeague();

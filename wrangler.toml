@@ -1,3 +1,9 @@
 name = "mlb26-custom-league-proxy"
 main = "worker.js"
 compatibility_date = "2026-08-01"
+
+# Después de ejecutar `npx wrangler kv namespace create LEAGUE_STORE`,
+# agrega aquí el binding que Wrangler devuelve:
+[[kv_namespaces]]
+binding = "LEAGUE_STORE"
+id = "ecb278684aee4980a284c8da14411e9b"
