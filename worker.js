@@ -8,12 +8,24 @@ function cors(extra={}){
 }
 function json(body,status=200,headers={}){return new Response(JSON.stringify(body),{status,headers:cors({"Content-Type":"application/json; charset=utf-8",...headers})});}
 function validUsername(v){return typeof v==="string" && v.length>0 && v.length<=80;}
+function publicChampions(value){
+  if(!Array.isArray(value)) return [];
+  return value.slice(0,50).map(entry=>({
+    season:String(entry?.season||"").slice(0,100),
+    champion:String(entry?.champion||"").slice(0,100),
+    team:String(entry?.team||"").slice(0,100),
+    runnerUp:String(entry?.runnerUp||"").slice(0,100),
+    result:String(entry?.result||"").slice(0,50),
+    note:String(entry?.note||"").slice(0,300)
+  })).filter(entry=>entry.season&&entry.champion);
+}
 function publicConfig(config={}){
   return {
     username:String(config.username||""),platform:"psn",seedGameId:String(config.seedGameId||""),
     myTeam:String(config.myTeam||""),startDate:String(config.startDate||""),
     regulationInnings:Number(config.regulationInnings||5),maxPages:Number(config.maxPages||20),
-    proxyBase:String(config.proxyBase||""),roster:config.roster&&typeof config.roster==="object"&&!Array.isArray(config.roster)?config.roster:{}
+    proxyBase:String(config.proxyBase||""),roster:config.roster&&typeof config.roster==="object"&&!Array.isArray(config.roster)?config.roster:{},
+    champions:publicChampions(config.champions)
   };
 }
 function validSnapshot(value){

@@ -18,7 +18,7 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders
-} from "./src/league-core.js?v=3.4.0";
+} from "./src/league-core.js?v=3.5.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -38,7 +38,7 @@ const state = {
 };
 
 function defaultConfig(){
-  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{} };
+  return { username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[] };
 }
 function loadConfigV3Only(){
   try { return {...defaultConfig(), ...JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")}; }
@@ -116,6 +116,20 @@ function formToConfig(){
   const raw=$("#roster").value.trim();
   if(raw){ try{roster=JSON.parse(raw)}catch{throw new Error("El roster de la liga no es JSON válido.")} }
   if(!roster || Array.isArray(roster) || typeof roster!=="object") throw new Error("El roster debe ser un objeto JSON usuario → equipo.");
+  let champions=[];
+  const championsRaw=$("#championsHistoryInput").value.trim();
+  if(championsRaw){try{champions=JSON.parse(championsRaw)}catch{throw new Error("El historial de campeones no es JSON válido.")}}
+  if(!Array.isArray(champions))throw new Error("El historial de campeones debe ser una lista JSON.");
+  if(champions.length>50)throw new Error("El historial admite hasta 50 campeones.");
+  champions=champions.map((entry,index)=>{
+    if(!entry||typeof entry!=="object"||Array.isArray(entry))throw new Error(`El campeón #${index+1} no es válido.`);
+    const champion={
+      season:cleanDisplayName(entry.season),champion:cleanDisplayName(entry.champion),team:cleanDisplayName(entry.team),
+      runnerUp:cleanDisplayName(entry.runnerUp),result:cleanDisplayName(entry.result),note:cleanDisplayName(entry.note)
+    };
+    if(!champion.season||!champion.champion)throw new Error(`El campeón #${index+1} necesita season y champion.`);
+    return champion;
+  });
   const platform=$("#platform").value;
   if(!PLATFORM_VALUES.includes(platform)) throw new Error("Plataforma inválida.");
   const config={
@@ -124,7 +138,7 @@ function formToConfig(){
     startDate:$("#startDate").value,
     regulationInnings:Math.min(9,Math.max(1,Number($("#regulationInnings").value)||5)),
     maxPages:Math.min(100,Math.max(1,Number($("#maxPages").value)||20)),
-    proxyBase:$("#proxyBase").value.trim().replace(/\/$/,""), roster
+    proxyBase:$("#proxyBase").value.trim().replace(/\/$/,""), roster, champions
   };
   configuredRoster(config);
   return config;
@@ -134,6 +148,7 @@ function fillForm(){
   $("#seedGameId").value=state.config.seedGameId; $("#myTeam").value=state.config.myTeam;
   $("#startDate").value=state.config.startDate||""; $("#regulationInnings").value=state.config.regulationInnings||5; $("#maxPages").value=state.config.maxPages;
   $("#proxyBase").value=state.config.proxyBase; $("#roster").value=Object.keys(state.config.roster||{}).length?JSON.stringify(state.config.roster,null,2):"";
+  $("#championsHistoryInput").value=state.config.champions?.length?JSON.stringify(state.config.champions,null,2):"";
 }
 
 function apiUrl(kind, params){
@@ -462,6 +477,37 @@ async function loadStats(){
   render(); setStatus(`Estadísticas cargadas para ${state.stats.loadedGameIds.size}/${games.length} partidos.`,"success");
 }
 
+function leaderCard(title,subtitle,players,value){
+  const rows=players.slice(0,5);
+  return `<article class="leader-card"><div class="leader-card-head"><div><span>${esc(subtitle)}</span><h3>${esc(title)}</h3></div><strong>${rows.length?esc(value(rows[0])):"—"}</strong></div>${rows.length?`<ol class="leader-list">${rows.map((player,index)=>`<li><span class="leader-position">${index+1}</span><span class="leader-player"><strong>${esc(player.name)}</strong><small>${esc(player.manager)}</small></span><strong class="leader-value">${esc(value(player))}</strong></li>`).join("")}</ol>`:`<div class="empty compact">Sin estadísticas.</div>`}</article>`;
+}
+
+function renderLeaders(){
+  const battingBy=category=>battingLeaders(state.stats,category);
+  const average=battingBy("avg").filter(player=>player.ab>0);
+  const pitching=pitchingLeaders(state.stats,"so");
+  $("#leaderGrid").innerHTML=[
+    leaderCard("Promedio","AVG",average,player=>fmt3(player.avg)),
+    leaderCard("Jonrones","HR",battingBy("hr"),player=>player.hr),
+    leaderCard("Hits","H",battingBy("h"),player=>player.h),
+    leaderCard("Impulsadas","RBI",battingBy("rbi"),player=>player.rbi),
+    leaderCard("Bases robadas","SB",battingBy("sb"),player=>player.sb),
+    leaderCard("Ponches","SO · Pitcheo",pitching,player=>player.so)
+  ].join("");
+}
+
+function renderChampions(){
+  const champions=Array.isArray(state.config.champions)?state.config.champions:[];
+  if(!champions.length){
+    $("#championSpotlight").innerHTML=`<div class="empty champion-empty">Aún no se ha publicado el historial de campeones.</div>`;
+    $("#championsHistory").innerHTML="";
+    return;
+  }
+  const latest=champions[0];
+  $("#championSpotlight").innerHTML=`<article class="champion-spotlight"><div class="trophy" aria-hidden="true">★</div><div><span>Último campeón · ${esc(latest.season)}</span><h3>${esc(latest.champion)}</h3><p>${latest.team?`${esc(latest.team)}`:""}${latest.runnerUp?` · Final vs. ${esc(latest.runnerUp)}`:""}${latest.result?` · ${esc(latest.result)}`:""}</p>${latest.note?`<small>${esc(latest.note)}</small>`:""}</div></article>`;
+  $("#championsHistory").innerHTML=`<h3>Historial</h3><div class="champion-grid">${champions.map((entry,index)=>`<article class="champion-entry"><span class="champion-number">${String(index+1).padStart(2,"0")}</span><div><small>${esc(entry.season)}</small><strong>${esc(entry.champion)}</strong><span>${entry.team?esc(entry.team):"Equipo no indicado"}${entry.runnerUp?` · vs. ${esc(entry.runnerUp)}`:""}${entry.result?` · ${esc(entry.result)}`:""}</span></div></article>`).join("")}</div>`;
+}
+
 function render(){
   const games=[...state.games.values()].sort((a,b)=>(b.dateValue?.getTime?.()||0)-(a.dateValue?.getTime?.()||0));
   const standings=calculateStandings(games,[...state.participants.values()]);
@@ -471,7 +517,10 @@ function render(){
   $("#lastSync").textContent=state.lastSync?new Date(state.lastSync).toLocaleString():"—";
   renderWarnings();
 
-  $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(r.user)}</strong></td><td><span class="team-pill">${esc(r.team)}</span></td><td>${r.gp}</td><td>${r.w}</td><td>${r.l}</td><td>${fmt3(r.pct)}</td><td>${r.rf}</td><td>${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td>${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="11" class="empty">Sin datos.</td></tr>`;
+  $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr><td class="rank">${i+1}</td><td class="standings-player"><strong>${esc(r.user)}</strong><small class="mobile-only">${esc(r.team)}</small></td><td class="desktop-only"><span class="team-pill">${esc(r.team)}</span></td><td class="desktop-only">${r.gp}</td><td class="desktop-only">${r.w}</td><td class="desktop-only">${r.l}</td><td class="mobile-only record">${r.w}-${r.l}</td><td>${fmt3(r.pct)}</td><td class="desktop-only">${r.rf}</td><td class="desktop-only">${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td class="desktop-only">${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="12" class="empty">Sin datos.</td></tr>`;
+
+  renderLeaders();
+  renderChampions();
 
   $("#gamesList").innerHTML=games.length?games.map(g=>{
     const decidedEarly=String(g.ruling||"0")!=="0";

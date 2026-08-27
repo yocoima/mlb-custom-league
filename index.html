@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.4.0" />
+  <link rel="stylesheet" href="styles.css?v=3.5.0" />
 </head>
 <body>
   <header class="topbar">
@@ -35,19 +35,26 @@
 
     <nav class="tabs" aria-label="Secciones">
       <button class="tab active" data-tab="standings">Posiciones</button>
+      <button class="tab" data-tab="leaders">Líderes</button>
       <button class="tab" data-tab="games">Partidos</button>
       <button class="tab" data-tab="batting">Bateo</button>
       <button class="tab" data-tab="pitching">Pitcheo</button>
+      <button class="tab" data-tab="champions">Campeones</button>
       <button class="tab" data-tab="participants">Participantes</button>
       <button class="tab" data-tab="settings">Configuración</button>
     </nav>
 
     <section id="standings" class="panel active">
       <div class="panel-head"><div><h2>Standings</h2><p>Calculados con partidos LEAGUE que coinciden con el roster, equipos y fecha inicial configurados.</p></div></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>GP</th><th>W</th><th>L</th><th>PCT</th><th>RF</th><th>RA</th><th>DIFF</th><th>Forma</th></tr></thead>
-        <tbody id="standingsBody"><tr><td colspan="11" class="empty">Sin datos.</td></tr></tbody>
+      <div class="table-wrap standings-wrap"><table class="standings-table">
+        <thead><tr><th>#</th><th>Jugador</th><th class="desktop-only">Equipo</th><th class="desktop-only">GP</th><th class="desktop-only">W</th><th class="desktop-only">L</th><th class="mobile-only">Récord</th><th>PCT</th><th class="desktop-only">RF</th><th class="desktop-only">RA</th><th>DIFF</th><th class="desktop-only">Forma</th></tr></thead>
+        <tbody id="standingsBody"><tr><td colspan="12" class="empty">Sin datos.</td></tr></tbody>
       </table></div>
+    </section>
+
+    <section id="leaders" class="panel">
+      <div class="panel-head"><div><h2>Líderes del torneo</h2><p>Resumen de las principales categorías con los Game Logs publicados.</p></div></div>
+      <div id="leaderGrid" class="leader-grid"><div class="empty">Carga los Game Logs para ver líderes.</div></div>
     </section>
 
     <section id="games" class="panel">
@@ -69,6 +76,12 @@
         <thead><tr><th>#</th><th>Pitcher</th><th>Manager</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>H</th><th>ER</th><th>BB</th><th>SO</th><th>ERA</th><th>WHIP</th><th>K/9</th></tr></thead>
         <tbody id="pitchingBody"><tr><td colspan="15" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
       </table></div>
+    </section>
+
+    <section id="champions" class="panel">
+      <div class="panel-head"><div><h2>Salón de campeones</h2><p>Campeón más reciente e historial oficial de torneos anteriores.</p></div></div>
+      <div id="championSpotlight"></div>
+      <div id="championsHistory" class="champions-history"></div>
     </section>
 
     <section id="participants" class="panel">
@@ -105,6 +118,17 @@
   "LeyP9": "Red Sox"
 }'></textarea>
         </label>
+        <label>Historial de campeones (JSON, más reciente primero)
+          <textarea id="championsHistoryInput" rows="9" spellcheck="false" placeholder='[
+  {
+    "season": "Torneo anterior",
+    "champion": "Usuario campeón",
+    "team": "Equipo MLB",
+    "runnerUp": "Subcampeón",
+    "result": "4-2"
+  }
+]'></textarea>
+        </label>
         <div class="actions">
           <button class="btn primary" type="submit">Guardar configuración</button>
           <button class="btn" id="clearBtn" type="button">Limpiar datos locales</button>
@@ -119,6 +143,6 @@
   </main>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.4.0"></script>
+  <script type="module" src="app.js?v=3.5.0"></script>
 </body>
 </html>

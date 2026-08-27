@@ -15,6 +15,8 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - calcula standings: GP, W, L, PCT, RF, RA, DIFF y forma reciente;
 - carga `Game Log` bajo demanda para estadísticas de bateo y pitcheo;
 - ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
+- muestra un panel resumido de líderes y un historial manual de campeones;
+- adapta navegación, tarjetas y standings para pantallas de teléfono;
 - no utiliza cookies, contraseñas, inventario, programas, Diamond Dynasty ni Arena.
 
 ## Por qué se usa `mode=all`
@@ -113,12 +115,34 @@ En la aplicación:
 2. pulsa **Cargar estadísticas**;
 3. pulsa **Publicar liga** e introduce la clave privada.
 
+Cuando haya partidos nuevos, el comisionado debe repetir esos tres pasos. **Actualizar liga** y **Cargar estadísticas** modifican solamente el navegador donde se ejecutan; los amigos no cambian la versión compartida. Ellos reciben automáticamente la última publicación disponible al abrir o recargar la página.
+
+## Historial de campeones
+
+La API no identifica temporadas ni campeones, por lo que este historial se administra manualmente en **Configuración -> Historial de campeones**. Se escribe como una lista JSON ordenada del torneo más reciente al más antiguo:
+
+```json
+[
+  {
+    "season": "Torneo agosto 2026",
+    "champion": "Usuario campeón",
+    "team": "Equipo MLB",
+    "runnerUp": "Subcampeón",
+    "result": "4-2",
+    "note": "Comentario opcional"
+  }
+]
+```
+
+Después de guardar la configuración, pulsa **Publicar liga** para que el campeón y el historial queden disponibles para todos.
+
 La clave solo se mantiene durante esa petición. No se guarda en `localStorage`, KV ni GitHub. Workers KV está optimizado para lecturas y sus cambios pueden tardar hasta aproximadamente 60 segundos en propagarse globalmente.
 
-El Worker solo permite dos rutas:
+El Worker permite estas rutas:
 
 - `/api/history`
 - `/api/game-log`
+- `/api/league` (`GET` público y `POST` protegido)
 
 No maneja credenciales privadas y fuerza `mode=all` para Game History.
 
