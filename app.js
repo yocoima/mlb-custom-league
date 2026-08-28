@@ -21,7 +21,7 @@ import {
   battingQualifies,
   pitchingQualifies,
   tournamentAwards
-} from "./src/league-core.js?v=3.8.0";
+} from "./src/league-core.js?v=3.9.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -656,7 +656,7 @@ function render(){
   $("#lastSync").textContent=state.lastSync?new Date(state.lastSync).toLocaleString():"—";
   renderWarnings();
 
-  $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr><td class="rank">${i+1}</td><td class="standings-player"><strong>${esc(r.user)}</strong><small class="mobile-only">${esc(r.team)}</small></td><td class="desktop-only"><span class="team-pill">${esc(r.team)}</span></td><td class="desktop-only">${r.gp}</td><td class="desktop-only">${r.w}</td><td class="desktop-only">${r.l}</td><td class="mobile-only record">${r.w}-${r.l}</td><td>${fmt3(r.pct)}</td><td class="desktop-only">${r.rf}</td><td class="desktop-only">${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td class="desktop-only">${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="12" class="empty">Sin datos.</td></tr>`;
+  $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr><td class="rank">${i+1}</td><td class="standings-player"><strong>${esc(r.user)}</strong><small class="mobile-only">${esc(r.team)}</small></td><td class="desktop-only"><span class="team-pill">${esc(r.team)}</span></td><td class="desktop-only">${r.gp}</td><td class="desktop-only">${r.homeGp}</td><td class="desktop-only">${r.awayGp}</td><td class="desktop-only">${r.w}</td><td class="desktop-only">${r.l}</td><td class="mobile-only record">${r.w}-${r.l}</td><td>${fmt3(r.pct)}</td><td class="desktop-only">${r.rf}</td><td class="desktop-only">${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td class="desktop-only">${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="14" class="empty">Sin datos.</td></tr>`;
 
   renderLeaders();
   renderChampions();

@@ -41,6 +41,7 @@ test("standings calcula W/L, carreras y diferencial",()=>{
   ];
   const s=calculateStandings(games);
   assert.equal(s[0].user,"A"); assert.equal(s[0].w,2); assert.equal(s[0].rf,7); assert.equal(s[0].ra,4); assert.equal(s[0].diff,3);
+  assert.equal(s[0].homeGp,1); assert.equal(s[0].awayGp,1);
 });
 
 test("standings no separa un usuario solo por mayúsculas",()=>{
@@ -56,7 +57,7 @@ test("standings no separa un usuario solo por mayúsculas",()=>{
 test("standings conserva participantes configurados sin juegos",()=>{
   const standings=calculateStandings([], [{username:"hector-gali07",team:"Blue Jays"}]);
   assert.deepEqual(standings[0],{
-    user:"hector-gali07",team:"Blue Jays",gp:0,w:0,l:0,rf:0,ra:0,form:[],pct:0,diff:0
+    user:"hector-gali07",team:"Blue Jays",gp:0,homeGp:0,awayGp:0,w:0,l:0,rf:0,ra:0,form:[],pct:0,diff:0
   });
 });
 

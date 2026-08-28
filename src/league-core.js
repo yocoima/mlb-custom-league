@@ -165,7 +165,7 @@ export function calculateStandings(games, participants = []) {
     const displayUser = cleanDisplayName(user) || cleanDisplayName(team) || "Unknown";
     const key = displayUser.toLowerCase();
     if (!table.has(key)) {
-      table.set(key, { user: displayUser, team: cleanDisplayName(team), gp: 0, w: 0, l: 0, rf: 0, ra: 0, form: [] });
+      table.set(key, { user: displayUser, team: cleanDisplayName(team), gp: 0, homeGp: 0, awayGp: 0, w: 0, l: 0, rf: 0, ra: 0, form: [] });
     } else if (!table.get(key).team && team) {
       table.get(key).team = cleanDisplayName(team);
     }
@@ -182,6 +182,7 @@ export function calculateStandings(games, participants = []) {
     const home = ensure(game.homeUser, game.homeTeam);
     const away = ensure(game.awayUser, game.awayTeam);
     home.gp++; away.gp++;
+    home.homeGp++; away.awayGp++;
     home.rf += game.homeScore; home.ra += game.awayScore;
     away.rf += game.awayScore; away.ra += game.homeScore;
     const homeWon = game.homeResult === "W" || game.awayResult === "L";

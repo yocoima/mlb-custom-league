@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.8.0" />
+  <link rel="stylesheet" href="styles.css?v=3.9.0" />
 </head>
 <body>
   <header class="topbar">
@@ -48,8 +48,8 @@
     <section id="standings" class="panel active">
       <div class="panel-head"><div><h2>Standings</h2><p>Calculados con partidos LEAGUE que coinciden con el roster, equipos y fecha inicial configurados.</p></div></div>
       <div class="table-wrap standings-wrap"><table class="standings-table">
-        <thead><tr><th>#</th><th>Jugador</th><th class="desktop-only">Equipo</th><th class="desktop-only">GP</th><th class="desktop-only">W</th><th class="desktop-only">L</th><th class="mobile-only">Récord</th><th>PCT</th><th class="desktop-only">RF</th><th class="desktop-only">RA</th><th>DIFF</th><th class="desktop-only">Forma</th></tr></thead>
-        <tbody id="standingsBody"><tr><td colspan="12" class="empty">Sin datos.</td></tr></tbody>
+        <thead><tr><th>#</th><th>Jugador</th><th class="desktop-only">Equipo</th><th class="desktop-only">GP</th><th class="desktop-only" title="Juegos como local">Casa</th><th class="desktop-only" title="Juegos como visitante">Visita</th><th class="desktop-only">W</th><th class="desktop-only">L</th><th class="mobile-only">Récord</th><th>PCT</th><th class="desktop-only" title="Carreras anotadas">RF</th><th class="desktop-only" title="Carreras permitidas">RA</th><th title="RF - RA">DIFF</th><th class="desktop-only">Forma</th></tr></thead>
+        <tbody id="standingsBody"><tr><td colspan="14" class="empty">Sin datos.</td></tr></tbody>
       </table></div>
     </section>
 
@@ -161,6 +161,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.8.0"></script>
+  <script type="module" src="app.js?v=3.9.0"></script>
 </body>
 </html>
