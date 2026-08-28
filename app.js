@@ -18,8 +18,10 @@ import {
   addGameStats,
   battingLeaders,
   pitchingLeaders,
+  battingQualifies,
+  pitchingQualifies,
   tournamentAwards
-} from "./src/league-core.js?v=3.7.0";
+} from "./src/league-core.js?v=3.8.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -609,16 +611,16 @@ function leaderCard(title,subtitle,players,value){
 
 function renderLeaders(){
   const battingBy=category=>battingLeaders(state.stats,category);
-  const average=battingBy("avg").filter(player=>player.ab>0);
+  const average=battingBy("avg").filter(battingQualifies);
   const pitching=pitchingLeaders(state.stats,"so");
   $("#leaderGrid").innerHTML=[
-    leaderCard("Promedio","AVG",average,player=>fmt3(player.avg)),
+    leaderCard("Promedio","AVG · mín. 3.1 PA/juego",average,player=>fmt3(player.avg)),
     leaderCard("Jonrones","HR",battingBy("hr"),player=>player.hr),
     leaderCard("Hits","H",battingBy("h"),player=>player.h),
     leaderCard("Impulsadas","RBI",battingBy("rbi"),player=>player.rbi),
     leaderCard("Bases robadas","SB",battingBy("sb"),player=>player.sb),
     leaderCard("Ponches","SO · Pitcheo",pitching,player=>player.so),
-    leaderCard("Efectividad","ERA",pitchingLeaders(state.stats,"era").filter(player=>player.outs>0),player=>player.era.toFixed(2)),
+    leaderCard("Efectividad","ERA · mín. 1 IP/juego",pitchingLeaders(state.stats,"era").filter(pitchingQualifies),player=>player.era.toFixed(2)),
     leaderCard("Salvados","SV",pitchingLeaders(state.stats,"sv"),player=>player.sv)
   ].join("");
 }

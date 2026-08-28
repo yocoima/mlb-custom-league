@@ -5,7 +5,8 @@ import {
   showDateKey,isOnOrAfterStartDate,gameFingerprint,
   scoreThroughInning,isCompatibleWithRegulationInnings,
   isFormallyCompletedGame,
-  calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards
+  calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards,
+  battingQualifies,pitchingQualifies
 } from "../src/league-core.js";
 
 test("filtra LEAGUE y limpia códigos de formato",()=>{
@@ -145,6 +146,23 @@ test("archiva ganadores de lideratos e incluye empates",()=>{
   const awards=tournamentAwards(acc);
   assert.deepEqual(awards.find(award=>award.key==="hr").winners.map(winner=>winner.player),["Bateador A","Bateador B"]);
   assert.equal(awards.find(award=>award.key==="sv").winners[0].value,"2");
+});
+
+test("califica AVG y ERA con el mínimo oficial de 3.1 PA / 1.0 IP por juego jugado",()=>{
+  const base={manager:"Manager",team:"Tigers",r:0,so:0,doubles:0,triples:0,hbp:0,sf:0,cs:0};
+  const smallSample={...base,name:"Racha corta",g:1,ab:1,h:1,rbi:0,bb:0,hr:0,sb:0};
+  const fullSeason={...base,name:"Titular",g:2,ab:6,h:3,rbi:1,bb:1,hr:0,sb:0};
+  assert.equal(battingQualifies({...smallSample,pa:1}),false);
+  assert.equal(battingQualifies({...fullSeason,pa:7}),true);
+
+  const acc=createStatAccumulator();
+  acc.batting.set("short",smallSample);
+  acc.batting.set("full",fullSeason);
+  acc.pitching.set("short",{manager:"Manager",team:"Tigers",name:"Relevo corto",g:1,outs:2,h:0,r:0,er:0,bb:0,so:1,w:0,l:0,sv:0,bs:0,hold:0});
+  acc.pitching.set("full",{manager:"Manager",team:"Tigers",name:"Abridor",g:2,outs:6,h:2,r:1,er:1,bb:0,so:2,w:1,l:0,sv:0,bs:0,hold:0});
+  const awards=tournamentAwards(acc);
+  assert.equal(awards.find(award=>award.key==="avg").winners[0].player,"Titular");
+  assert.equal(awards.find(award=>award.key==="era").winners[0].player,"Abridor");
 });
 
 test("consolida el mismo jugador aunque cambie p_inx, posición o decisión",()=>{
