@@ -50,6 +50,19 @@ test("publica con autorización y permite lectura pública",async()=>{
   assert.ok(saved.publishedAt);
 });
 
+test("reconcilia participantes antiguos con el roster corregido al publicar",async()=>{
+  const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"},data=snapshot();
+  data.config.roster={commissioner:"Tigers",friendCorrect:"Blue Jays"};
+  data.games[0]={...data.games[0],homeTeam:"Tigers",awayTeam:"Blue Jays"};
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/corrected",{
+    method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)
+  }),env);
+  assert.equal(response.status,200);
+  const saved=await (await worker.fetch(new Request("https://worker.example/api/leagues/corrected"),env)).json();
+  assert.equal(saved.participants.find(item=>item.team==="Blue Jays").username,"friendCorrect");
+  assert.equal(saved.games[0].awayUser,"friendCorrect");
+});
+
 test("limpia y limita el historial publico de campeones",async()=>{
   const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"};
   const data=snapshot();
@@ -100,6 +113,24 @@ test("POST /api/league/refresh agrega solo juegos verificados y sus estadística
   assert.equal(saved.refresh.added,1);
   assert.equal(saved.games.length,2);
   assert.equal(saved.stats.pitching[0][1].sv,1);
+});
+
+test("refresh repara un nombre antiguo y acepta sus juegos nuevos",async t=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();
+  current.publishedAt="same";
+  current.config.roster={commissioner:"Tigers",friendCorrect:"Blue Jays"};
+  current.games[0]={...current.games[0],homeTeam:"Tigers",awayTeam:"Blue Jays"};
+  await kv.put("league:corrected",JSON.stringify(current));
+  const incoming=structuredClone(current);
+  incoming.games.push({id:"2",uuid:"renamed-uuid",dedupKey:"uuid:renamed-uuid",date:"08/27/2026 02:00:00",homeUser:"commissioner",awayUser:"friendCorrect",homeTeam:"Tigers",awayTeam:"Blue Jays",apiRecords:[{id:"2",username:"commissioner"}]});
+  const payload={game:[
+    ["line_score",{game_mode:"LEAGUE",game_uuid:"renamed-uuid",created_at:"08/27/2026 02:00:00",innings:"5",ruling:"0",home_runs:"3",away_runs:"1",home_display_result:"W",away_display_result:"L",home_player_id:"10",away_player_id:"20",home_mlb_team_id:"7",away_mlb_team_id:"14",home_full_name:"Tigers",away_full_name:"Blue Jays"}],
+    ["box_score",[]]
+  ]};
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify(payload),{status:200,headers:{"Content-Type":"application/json"}}));
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/corrected/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(incoming)}),env),saved=await response.json();
+  assert.equal(response.status,200);assert.equal(saved.refresh.added,1);
+  assert.equal(saved.participants.find(item=>item.team==="Blue Jays").username,"friendCorrect");
 });
 
 test("POST /api/league/refresh rechaza una base desactualizada",async()=>{
