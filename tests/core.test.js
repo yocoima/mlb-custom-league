@@ -6,7 +6,7 @@ import {
   scoreThroughInning,isCompatibleWithRegulationInnings,
   isFormallyCompletedGame,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards,
-  battingQualifies,pitchingQualifies
+  battingQualifies,pitchingQualifies,filterStatLeaders
 } from "../src/league-core.js";
 
 test("filtra LEAGUE y limpia códigos de formato",()=>{
@@ -136,6 +136,17 @@ test("ordena líderes de pitcheo por efectividad y salvados",()=>{
   acc.pitching.set("saves",{...base,name:"Cerrador",er:2,sv:3});
   assert.equal(pitchingLeaders(acc,"era")[0].name,"Mejor ERA");
   assert.equal(pitchingLeaders(acc,"sv")[0].name,"Cerrador");
+});
+
+test("filtra estadísticas por búsqueda, manager y equipo",()=>{
+  const rows=[
+    {name:"José Ramírez",manager:"Manager Uno",team:"Guardians"},
+    {name:"Aaron Judge",manager:"Manager Dos",team:"Yankees"},
+    {name:"Juan Soto",manager:"Manager Uno",team:"Yankees"}
+  ];
+  assert.deepEqual(filterStatLeaders(rows,{query:"jose"}).map(row=>row.name),["José Ramírez"]);
+  assert.deepEqual(filterStatLeaders(rows,{manager:"manager uno",team:"Yankees"}).map(row=>row.name),["Juan Soto"]);
+  assert.deepEqual(filterStatLeaders(rows,{query:"yankees"}).map(row=>row.name),["Aaron Judge","Juan Soto"]);
 });
 
 test("archiva ganadores de lideratos e incluye empates",()=>{

@@ -400,6 +400,19 @@ export function pitchingLeaders(acc, sortBy = "so") {
   return pitchers.sort((a, b) => compare(a, b) || a.name.localeCompare(b.name));
 }
 
+function searchableText(value) {
+  return cleanDisplayName(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+export function filterStatLeaders(players, { query = "", manager = "", team = "" } = {}) {
+  const needle = searchableText(query);
+  return players.filter(player =>
+    (!needle || [player.name, player.manager, player.team].some(value => searchableText(value).includes(needle))) &&
+    (!manager || sameText(player.manager, manager)) &&
+    (!team || sameText(player.team, team))
+  );
+}
+
 export function tournamentAwards(acc) {
   const batting = category => battingLeaders(acc, category);
   const pitching = category => pitchingLeaders(acc, category);

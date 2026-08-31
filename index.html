@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=4.0.0" />
+  <link rel="stylesheet" href="styles.css?v=4.1.0" />
 </head>
 <body>
   <header class="topbar">
@@ -72,18 +72,30 @@
     </section>
 
     <section id="batting" class="panel">
-      <div class="panel-head"><div><h2>Líderes de bateo</h2><p>Acumulado desde Box Score. Selecciona la categoría para ordenar el ranking.</p></div><label class="sort-control">Ordenar por<select id="battingSort"><option value="avg">Promedio (AVG)</option><option value="hr">Jonrones (HR)</option><option value="h">Hits (H)</option><option value="rbi">Impulsadas (RBI)</option><option value="sb">Bases robadas (SB)</option><option value="ops">OPS</option></select></label></div>
+      <div class="panel-head"><div><h2>Líderes de bateo</h2><p>Acumulado desde Box Score. Busca un jugador o filtra por manager y equipo.</p></div></div>
+      <div class="stats-toolbar">
+        <label class="filter-control">Buscar jugador<input id="battingSearch" type="search" placeholder="Nombre del jugador" /></label>
+        <label class="filter-control">Manager<select id="battingManagerFilter"><option value="">Todos</option></select></label>
+        <label class="filter-control">Equipo<select id="battingTeamFilter"><option value="">Todos</option></select></label>
+        <label class="filter-control">Ordenar por<select id="battingSort"><option value="avg">Promedio (AVG)</option><option value="hr">Jonrones (HR)</option><option value="h">Hits (H)</option><option value="rbi">Impulsadas (RBI)</option><option value="sb">Bases robadas (SB)</option><option value="ops">OPS</option></select></label>
+      </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>#</th><th>Jugador</th><th>Manager</th><th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>SO</th><th>SB</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th></tr></thead>
-        <tbody id="battingBody"><tr><td colspan="18" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
+        <thead><tr><th>#</th><th>Jugador</th><th>Manager</th><th>Equipo</th><th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>SO</th><th>SB</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th></tr></thead>
+        <tbody id="battingBody"><tr><td colspan="19" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
       </table></div>
     </section>
 
     <section id="pitching" class="panel">
-      <div class="panel-head"><div><h2>Líderes de pitcheo</h2><p>El ranking inicial muestra los pitchers con más ponches.</p></div><label class="sort-control">Ordenar por<select id="pitchingSort"><option value="so">Ponches (SO)</option><option value="era">Efectividad (ERA)</option><option value="k9">Ponches por 9 (K/9)</option><option value="w">Victorias (W)</option><option value="sv">Salvados (SV)</option></select></label></div>
+      <div class="panel-head"><div><h2>Líderes de pitcheo</h2><p>Busca un pitcher o filtra por manager y equipo.</p></div></div>
+      <div class="stats-toolbar">
+        <label class="filter-control">Buscar pitcher<input id="pitchingSearch" type="search" placeholder="Nombre del pitcher" /></label>
+        <label class="filter-control">Manager<select id="pitchingManagerFilter"><option value="">Todos</option></select></label>
+        <label class="filter-control">Equipo<select id="pitchingTeamFilter"><option value="">Todos</option></select></label>
+        <label class="filter-control">Ordenar por<select id="pitchingSort"><option value="so">Ponches (SO)</option><option value="era">Efectividad (ERA)</option><option value="k9">Ponches por 9 (K/9)</option><option value="w">Victorias (W)</option><option value="sv">Salvados (SV)</option></select></label>
+      </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>#</th><th>Pitcher</th><th>Manager</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>H</th><th>ER</th><th>BB</th><th>SO</th><th>ERA</th><th>WHIP</th><th>K/9</th></tr></thead>
-        <tbody id="pitchingBody"><tr><td colspan="15" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
+        <thead><tr><th>#</th><th>Pitcher</th><th>Manager</th><th>Equipo</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>H</th><th>ER</th><th>BB</th><th>SO</th><th>ERA</th><th>WHIP</th><th>K/9</th></tr></thead>
+        <tbody id="pitchingBody"><tr><td colspan="16" class="empty">Carga los Game Logs para ver estadísticas.</td></tr></tbody>
       </table></div>
     </section>
 
@@ -96,8 +108,8 @@
     <section id="participants" class="panel">
       <div class="panel-head"><div><h2>Participantes de la liga</h2><p>Roster configurado; el <code>player_id</code> se verifica automáticamente desde Game Log.</p></div></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Jugador</th><th>Plataforma</th><th>Equipo</th><th>Estado</th><th>Origen</th></tr></thead>
-        <tbody id="participantsBody"><tr><td colspan="5" class="empty">Sin datos.</td></tr></tbody>
+        <thead><tr><th>Jugador</th><th>Equipo</th><th>Estado</th><th>Origen</th></tr></thead>
+        <tbody id="participantsBody"><tr><td colspan="4" class="empty">Sin datos.</td></tr></tbody>
       </table></div>
     </section>
 
@@ -108,19 +120,11 @@
           <label>Nombre del torneo<input id="leagueName" autocomplete="off" placeholder="Ej. Reclutas V2" required /></label>
           <label>Comisionado / usuario principal<input id="username" autocomplete="off" placeholder="tu_usuario" required /></label>
         </div>
-        <div class="two">
-          <label>Plataforma<select id="platform"><option value="psn">PSN</option></select></label>
-          <label>Mi equipo en esta liga<input id="myTeam" placeholder="Ej. Tigers" required /></label>
-        </div>
-        <div class="two">
-          <label>Game ID semilla (validación opcional)<input id="seedGameId" inputmode="numeric" placeholder="Ej. 1690641801" /></label>
-          <label>Inicio de esta temporada<input id="startDate" type="date" required /></label>
-        </div>
+        <label>Inicio de esta temporada<input id="startDate" type="date" required /></label>
         <div class="two">
           <label>Entradas reglamentarias<input id="regulationInnings" type="number" min="1" max="9" value="5" required /></label>
           <label>Máx. páginas por participante<input id="maxPages" type="number" min="1" max="100" value="20" /></label>
         </div>
-        <label>URL del Cloudflare Worker / proxy (opcional)<input id="proxyBase" placeholder="https://mlb26-custom-league-proxy.usuario.workers.dev" /></label>
         <label>Roster inicial de la liga (JSON: usuario → equipo)
           <textarea id="roster" rows="12" spellcheck="false" required placeholder='{
   "yocoima_herrera": "Tigers",
@@ -128,22 +132,9 @@
   "LeyP9": "Red Sox"
 }'></textarea>
         </label>
-        <label>Historial de campeones (JSON, más reciente primero)
-          <textarea id="championsHistoryInput" rows="9" spellcheck="false" placeholder='[
-  {
-    "season": "Torneo anterior",
-    "champion": "Usuario campeón",
-    "team": "Equipo MLB",
-    "runnerUp": "Subcampeón",
-    "result": "4-2"
-  }
-]'></textarea>
-        </label>
         <div class="actions">
           <button class="btn primary" type="submit">Guardar configuración</button>
           <button class="btn" id="newSeasonBtn" type="button">Nueva temporada</button>
-          <button class="btn" id="clearBtn" type="button">Limpiar datos locales</button>
-          <label class="btn file-btn">Importar Game History JSON<input id="historyFile" type="file" accept="application/json,.json,.md,.txt" /></label>
         </div>
       </form>
       <div class="info-box">
@@ -193,6 +184,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.0.3"></script>
+  <script type="module" src="app.js?v=4.1.1"></script>
 </body>
 </html>

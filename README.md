@@ -16,7 +16,8 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - carga `Game Log` incrementalmente para estadísticas de bateo y pitcheo;
 - ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
 - exige el mínimo oficial de MLB (regla 9.22) para liderar AVG/OBP/SLG/OPS y ERA: 3.1 turnos al plato y 1 entrada lanzada por cada juego jugado por ese jugador; los líderes de conteo (HR, H, RBI, SB, SO, SV) no requieren mínimo;
-- muestra un panel resumido de líderes y un historial manual de campeones;
+- muestra un panel resumido de líderes y un historial automático de campeones;
+- permite buscar jugadores y filtrar bateo o pitcheo por manager y equipo MLB;
 - administra varios torneos independientes sin reemplazar los anteriores;
 - separa ronda regular y postemporada, con tabla y estadísticas propias para cada fase;
 - permite finalizar la ronda regular, seleccionar clasificados y archivar automáticamente sus lideratos;
@@ -41,7 +42,7 @@ La API pública no expone `league_id`, nombre de liga ni roster oficial. Para ev
 6. un juego que supera las entradas reglamentarias debe haber estado empatado al finalizar la última de ellas;
 7. `player_id` verifica la identidad y `game_uuid` identifica el partido globalmente.
 
-El Game ID semilla es una validación opcional: si se indica, debe aparecer dentro de la liga configurada. Si dos ligas comparten exactamente participantes, equipos y fechas, la API pública no permite distinguirlas automáticamente.
+Si dos ligas comparten exactamente participantes, equipos y fechas, la API pública no permite distinguirlas automáticamente. Por eso cada torneo requiere una fecha inicial y un roster correcto; ya no se solicita un Game ID semilla.
 
 ### Ejemplo de roster
 
@@ -88,7 +89,7 @@ Wrangler mostrará una URL similar a:
 https://mlb26-custom-league-proxy.<tu-subdominio>.workers.dev
 ```
 
-Pégala en **Configuración -> URL del Cloudflare Worker / proxy**.
+La aplicación publicada ya utiliza automáticamente el Worker configurado en el proyecto; no es necesario introducir su URL en la interfaz.
 
 ## Publicar y actualizar la liga para todos
 
@@ -183,22 +184,7 @@ El cierre guarda automáticamente los ganadores de promedio, jonrones, hits, imp
 
 ## Historial de campeones
 
-La API no identifica temporadas ni campeones. El botón **Finalizar torneo** genera automáticamente la entrada completa; el JSON de **Configuración -> Historial de campeones** se mantiene para corregir o importar registros históricos manuales. La lista se ordena del torneo más reciente al más antiguo:
-
-```json
-[
-  {
-    "season": "Torneo agosto 2026",
-    "champion": "Usuario campeón",
-    "team": "Equipo MLB",
-    "runnerUp": "Subcampeón",
-    "result": "4-2",
-    "note": "Comentario opcional"
-  }
-]
-```
-
-Después de guardar la configuración, pulsa **Publicar liga** para que el campeón y el historial queden disponibles para todos.
+La API no identifica temporadas ni campeones. **Finalizar ronda regular** archiva automáticamente sus lideratos y **Finalizar torneo** completa la entrada con campeón, final y premios de postemporada. No es necesario editar o copiar un JSON de campeones entre torneos: el Salón de Campeones general combina los snapshots publicados.
 
 La clave solo se mantiene durante esa petición. No se guarda en `localStorage`, KV ni GitHub. Workers KV está optimizado para lecturas y sus cambios pueden tardar hasta aproximadamente 60 segundos en propagarse globalmente.
 
