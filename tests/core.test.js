@@ -83,6 +83,24 @@ test("valida una liga de 5 innings sin excluir extra innings legítimos",()=>{
   assert.equal(isCompatibleWithRegulationInnings({innings:"4"},5),true);
 });
 
+test("acepta extra innings cuando line_score desplaza los slots de entradas",()=>{
+  const tenInningGame={
+    innings:"10",home_runs:"8",away_runs:"5",
+    inning_1:"2",home_runs_1:"0",away_runs_1:"0",
+    inning_2:"3",home_runs_2:"0",away_runs_2:"0",
+    inning_3:"4",home_runs_3:"3",away_runs_3:"0",
+    inning_4:"5",home_runs_4:"0",away_runs_4:"1",
+    inning_5:"6",home_runs_5:"0",away_runs_5:"0",
+    inning_6:"7",home_runs_6:"0",away_runs_6:"3",
+    inning_7:"8",home_runs_7:"0",away_runs_7:"0",
+    inning_8:"9",home_runs_8:"1",away_runs_8:"0",
+    inning_9:"10",home_runs_9:"4",away_runs_9:"1"
+  };
+  assert.equal(scoreThroughInning(tenInningGame,"home",9),4);
+  assert.equal(scoreThroughInning(tenInningGame,"away",9),4);
+  assert.equal(isCompatibleWithRegulationInnings(tenInningGame,9),true);
+});
+
 test("excluye juegos interrumpidos o decididos por ruling",()=>{
   const completed={ruling:"0",innings:"5",away_runs:"3",home_runs:"6",away_display_result:"L",home_display_result:"W"};
   const interrupted={ruling:"6",innings:"3",away_runs:"3",home_runs:"2",away_display_result:"L",home_display_result:"W"};

@@ -213,6 +213,22 @@ export function gameParts(payload) {
 }
 
 export function scoreThroughInning(lineScore, side, inning) {
+  const inningSlots = Object.keys(lineScore ?? {}).flatMap(key => {
+    const match = key.match(/^inning_(\d+)$/);
+    if (!match) return [];
+    const slot = Number(match[1]);
+    const actualInning = toNumber(lineScore[key]);
+    return actualInning === null ? [] : [{ slot, actualInning }];
+  });
+
+  if (inningSlots.length) {
+    return inningSlots.reduce((runs, { slot, actualInning }) =>
+      actualInning <= inning
+        ? runs + (toNumber(lineScore?.[`${side}_runs_${slot}`], 0) ?? 0)
+        : runs
+    , 0);
+  }
+
   let runs = 0;
   for (let current = 1; current <= inning; current++) {
     runs += toNumber(lineScore?.[`${side}_runs_${current}`], 0) ?? 0;
