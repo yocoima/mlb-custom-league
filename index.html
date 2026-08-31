@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=3.9.0" />
+  <link rel="stylesheet" href="styles.css?v=4.0.0" />
 </head>
 <body>
   <header class="topbar">
@@ -15,10 +15,13 @@
       <h1>Custom League Manager</h1>
       <p id="currentLeagueName">Solo Custom League · Game History + Game Log</p>
     </div>
+    <label class="league-switcher">Torneo<select id="leagueSelector" aria-label="Seleccionar torneo"></select></label>
     <div class="top-actions">
       <button id="syncBtn" class="btn primary">Actualizar liga</button>
       <button id="statsBtn" class="btn">Recargar estadísticas</button>
       <button id="publishBtn" class="btn">Publicar liga</button>
+      <button id="closeRegularBtn" class="btn">Finalizar ronda regular</button>
+      <button id="correctionBtn" class="btn">Corregir datos</button>
       <button id="finishSeasonBtn" class="btn finish">Finalizar torneo</button>
     </div>
   </header>
@@ -26,6 +29,11 @@
   <main class="container">
     <div id="status" class="notice">Configura tu usuario y plataforma para comenzar.</div>
     <div id="warnings" class="warning hidden"></div>
+
+    <section class="phase-bar">
+      <div><span>Vista</span><select id="phaseView"><option value="regular">Ronda regular</option><option value="postseason">Postemporada</option></select></div>
+      <strong id="phaseStatus">Ronda regular</strong>
+    </section>
 
     <section class="cards grid">
       <article class="stat"><span>Participantes</span><strong id="participantCount">0</strong></article>
@@ -160,7 +168,31 @@
     </form>
   </dialog>
 
+  <dialog id="closeRegularDialog" class="season-dialog">
+    <form id="closeRegularForm" class="form">
+      <div class="dialog-head"><div><span>Cierre de fase</span><h2>Finalizar ronda regular</h2></div><button id="cancelRegularBtn" class="dialog-close" type="button" aria-label="Cerrar">×</button></div>
+      <p>Se congelarán la tabla, estadísticas y lideratos. Selecciona los equipos que avanzan; solamente sus juegos posteriores contarán en postemporada.</p>
+      <div id="qualifierList" class="qualifier-list"></div>
+      <div id="regularAwardsPreview" class="finish-awards-preview"></div>
+      <div class="actions dialog-actions"><button class="btn" id="cancelRegularFooterBtn" type="button">Cancelar</button><button class="btn finish" type="submit">Cerrar y publicar</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="correctionDialog" class="season-dialog">
+    <form id="correctionForm" class="form">
+      <div class="dialog-head"><div><span>Ajuste administrativo</span><h2>Corregir resultados o estadísticas</h2></div><button id="cancelCorrectionBtn" class="dialog-close" type="button" aria-label="Cerrar">×</button></div>
+      <p>El dato oficial se conserva y el ajuste queda registrado con su motivo.</p>
+      <div class="two"><label>Fase<select id="correctionPhase"></select></label><label>Tipo<select id="correctionType"><option value="result">Resultado</option><option value="batting">Estadística de bateo</option><option value="pitching">Estadística de pitcheo</option></select></label></div>
+      <label id="correctionTargetLabel">Partido<select id="correctionTarget" required></select></label>
+      <div id="resultCorrectionFields" class="two"><label>Carreras visitante<input id="correctAwayScore" type="number" min="0" /></label><label>Carreras local<input id="correctHomeScore" type="number" min="0" /></label></div>
+      <div id="statCorrectionFields" class="two hidden"><label>Categoría<select id="correctionField"></select></label><label>Ajuste (+/-)<input id="correctionDelta" type="number" step="1" /></label></div>
+      <label>Motivo<input id="correctionReason" maxlength="300" required placeholder="Ej. El juego registró incorrectamente el marcador" /></label>
+      <div id="correctionHistory" class="correction-history"></div>
+      <div class="actions dialog-actions"><button class="btn" id="cancelCorrectionFooterBtn" type="button">Cancelar</button><button class="btn finish" type="submit">Guardar y publicar ajuste</button></div>
+    </form>
+  </dialog>
+
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=3.9.0"></script>
+  <script type="module" src="app.js?v=4.0.0"></script>
 </body>
 </html>

@@ -17,7 +17,11 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
 - exige el mínimo oficial de MLB (regla 9.22) para liderar AVG/OBP/SLG/OPS y ERA: 3.1 turnos al plato y 1 entrada lanzada por cada juego jugado por ese jugador; los líderes de conteo (HR, H, RBI, SB, SO, SV) no requieren mínimo;
 - muestra un panel resumido de líderes y un historial manual de campeones;
-- permite finalizar una temporada y archivar automáticamente campeón, final y ganadores de AVG, HR, H, RBI, SB, SO, ERA y SV;
+- administra varios torneos independientes sin reemplazar los anteriores;
+- separa ronda regular y postemporada, con tabla y estadísticas propias para cada fase;
+- permite finalizar la ronda regular, seleccionar clasificados y archivar automáticamente sus lideratos;
+- permite corregir marcadores o estadísticas mediante ajustes administrativos auditables;
+- permite finalizar una temporada y archivar automáticamente campeón, final y ganadores de AVG, HR, H, RBI, SB, SO, ERA y SV de ambas fases;
 - adapta navegación, tarjetas y standings para pantallas de teléfono;
 - no utiliza cookies, contraseñas, inventario, programas, Diamond Dynasty ni Arena.
 
@@ -88,12 +92,12 @@ Pégala en **Configuración -> URL del Cloudflare Worker / proxy**.
 
 ## Publicar y actualizar la liga para todos
 
-El frontend guarda un snapshot público con configuración, participantes, partidos y estadísticas en Workers KV. Los visitantes lo cargan automáticamente mediante `GET /api/league`.
+El frontend guarda cada torneo como un snapshot público independiente con configuración, participantes, partidos y estadísticas en Workers KV. Los visitantes cargan el índice mediante `GET /api/leagues` y el torneo seleccionado mediante `GET /api/leagues/:id`.
 
 Hay dos niveles de operación:
 
-- cualquier visitante puede pulsar **Actualizar liga**; el navegador busca candidatos nuevos y `POST /api/league/refresh` hace que el Worker vuelva a consultar el Game Log oficial antes de agregarlos al snapshot compartido;
-- solamente el comisionado puede cambiar nombre del torneo, comisionado, roster, fecha inicial, innings, campeones o iniciar otra temporada mediante el `POST /api/league` protegido.
+- cualquier visitante puede pulsar **Actualizar liga**; el navegador busca candidatos nuevos y `POST /api/leagues/:id/refresh` hace que el Worker vuelva a consultar el Game Log oficial antes de agregarlos al torneo seleccionado;
+- solamente el comisionado puede publicar configuración, cerrar fases, aplicar correcciones, finalizar un torneo o crear otro mediante `POST /api/leagues/:id`, protegido con la clave privada.
 
 Configuración inicial, una sola vez:
 
@@ -126,24 +130,56 @@ Cuando haya partidos nuevos, cualquier amigo puede pulsar **Actualizar liga**. N
 
 El Worker limita cada actualización pública a 25 candidatos y nunca confía en el marcador ni en las estadísticas enviados por el navegador. Verifica modo `LEAGUE`, UUID, roster, equipos, identidades, fecha, innings y finalización contra la API oficial antes de escribir en KV.
 
+## Administrar varios torneos
+
+1. En **Configuración**, pulsa **Nueva temporada**.
+2. Indica un nombre. La aplicación genera un identificador estable para ese torneo sin sobrescribir los anteriores.
+3. Cambia comisionado, participantes/equipos, fecha inicial e innings reglamentarios según corresponda.
+4. Guarda y pulsa **Publicar liga** con la clave privada.
+
+El selector **Torneo** permite cambiar entre torneos activos o finalizados. También se puede compartir un torneo específico con `?league=identificador`. La liga publicada antes de esta actualización se conserva automáticamente como `principal`; no hay que volver a cargarla.
+
+## Ronda regular y postemporada
+
+1. Durante la ronda regular, cualquier visitante puede usar **Actualizar liga**.
+2. Cuando termine, pulsa **Finalizar ronda regular**.
+3. Selecciona al menos dos clasificados y publica el cierre con la clave privada.
+4. La tabla, estadísticas y lideratos regulares quedan congelados en el historial del torneo.
+5. La postemporada comienza con tabla y estadísticas en cero. Solamente se consultan y aceptan partidos posteriores al cierre entre los clasificados elegidos.
+6. El selector **Vista** permite volver a consultar la ronda regular sin mezclarla con la postemporada.
+
+Los partidos de postemporada no modifican las posiciones ni los acumulados regulares. Al finalizar el torneo se archivan por separado los lideratos de ronda regular y postemporada.
+
+## Correcciones administrativas
+
+El botón **Corregir datos** permite:
+
+- reemplazar el marcador de un partido sin alterar el registro oficial original;
+- sumar o restar una estadística de bateo o pitcheo a un jugador;
+- aplicar la corrección a ronda regular o postemporada;
+- eliminar posteriormente un ajuste.
+
+Cada ajuste exige la clave privada, guarda fecha y motivo, y se publica para todos. El valor oficial no se borra: la aplicación conserva una lista auditable de ajustes y recalcula tabla, líderes y premios archivados. Los ajustes estadísticos son incrementos o decrementos enteros; para entradas lanzadas se usan outs (`3 = 1.0 IP`).
+
 ## Iniciar un torneo nuevo
 
 1. En **Configuración**, pulsa **Nueva temporada**.
-2. Cambia el nombre del torneo, comisionado, participantes/equipos, fecha inicial e innings reglamentarios.
-3. Guarda la configuración.
-4. Pulsa **Publicar liga** e introduce la clave privada.
+2. Introduce el nombre del nuevo torneo.
+3. Cambia el comisionado, participantes/equipos, fecha inicial e innings reglamentarios.
+4. Guarda la configuración.
+5. Pulsa **Publicar liga** e introduce la clave privada.
 
-La publicación inicial puede tener cero juegos. Desde ese momento todos reciben la nueva configuración y cualquiera puede incorporar los primeros resultados con **Actualizar liga**. El historial de campeones se conserva como punto de partida y puede editarse antes de publicar.
+La publicación inicial puede tener cero juegos. Desde ese momento todos reciben la nueva configuración y cualquiera puede incorporar los primeros resultados con **Actualizar liga**. Los torneos anteriores permanecen disponibles en el selector y en el historial general.
 
 ## Finalizar un torneo
 
-El botón **Finalizar torneo** está disponible cuando existen partidos y todos sus Game Logs fueron cargados correctamente:
+El botón **Finalizar torneo** está disponible durante la postemporada cuando existen partidos y todos sus Game Logs fueron cargados correctamente:
 
 1. selecciona campeón y, opcionalmente, subcampeón, resultado y una nota;
 2. revisa la vista previa de los lideratos;
 3. pulsa **Confirmar y publicar** e introduce la clave privada.
 
-El cierre guarda automáticamente los ganadores de promedio, jonrones, hits, impulsadas, bases robadas, ponches, efectividad y salvados. Los empates se archivan como co-líderes. Después de publicar el cierre, la temporada queda bloqueada para juegos nuevos y permanece visible en **Campeones**. Para continuar se debe crear y publicar una **Nueva temporada**.
+El cierre guarda automáticamente los ganadores de promedio, jonrones, hits, impulsadas, bases robadas, ponches, efectividad y salvados de la postemporada, junto con los lideratos ya congelados de la ronda regular. Los empates se archivan como co-líderes. Después de publicar el cierre, el torneo queda bloqueado para juegos nuevos y permanece visible en **Campeones** y en el índice general.
 
 ## Historial de campeones
 
@@ -170,8 +206,10 @@ El Worker permite estas rutas:
 
 - `/api/history`
 - `/api/game-log`
-- `/api/league` (`GET` público y `POST` protegido)
-- `/api/league/refresh` (`POST` público con verificación oficial y configuración inmutable)
+- `/api/leagues` (`GET` público del índice de torneos)
+- `/api/leagues/:id` (`GET` público y `POST` protegido)
+- `/api/leagues/:id/refresh` (`POST` público con verificación oficial y configuración inmutable)
+- `/api/league` y `/api/league/refresh` (alias compatibles para el torneo `principal`)
 
 No maneja credenciales privadas y fuerza `mode=all` para Game History.
 
