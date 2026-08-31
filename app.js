@@ -30,6 +30,7 @@ const STATE_KEY = "mlb26_custom_league_state_v3";
 const LEGACY_STORAGE_KEY = "mlb26_custom_league_config_v2";
 const API_ORIGIN = "https://mlb26.theshow.com";
 const DEFAULT_PROXY_BASE = "https://mlb26-custom-league-proxy.yocoimadejesus.workers.dev";
+const CURRENT_LEAGUE_NAME = "Torneo Reclutas V2";
 
 const state = {
   config: loadConfig(),
@@ -86,6 +87,8 @@ function deserializeStats(value={}){return {batting:new Map(value.batting||[]),p
 function gameKey(game){return String(game?.dedupKey||game?.uuid||game?.id||"");}
 function gamePhase(game){return game?.phase==="postseason"?"postseason":"regular";}
 function activePhase(){return state.config.phase==="postseason"?"postseason":"regular";}
+function visibleLeagueName(value,id=state.activeLeagueId){return cleanDisplayName(value)||(id==="principal"?CURRENT_LEAGUE_NAME:"");}
+function reservedLeagueName(value){return ["principal","torneo principal"].includes(cleanDisplayName(value).toLowerCase());}
 
 function publicSnapshot(){
   return {
@@ -97,7 +100,7 @@ function publicSnapshot(){
 }
 
 function applyPublishedSnapshot(snapshot){
-  state.config={...defaultConfig(),...(snapshot.config||{}),leagueId:state.activeLeagueId,leagueName:snapshot.config?.leagueName||"Liga actual",phase:snapshot.config?.phase==="postseason"?"postseason":"regular",platform:"psn",proxyBase:snapshot.config?.proxyBase||DEFAULT_PROXY_BASE};
+  state.config={...defaultConfig(),...(snapshot.config||{}),leagueId:state.activeLeagueId,leagueName:visibleLeagueName(snapshot.config?.leagueName),phase:snapshot.config?.phase==="postseason"?"postseason":"regular",platform:"psn",proxyBase:snapshot.config?.proxyBase||DEFAULT_PROXY_BASE};
   state.participants.clear();
   state.games.clear();
   for(const participant of snapshot.participants||[])state.participants.set(participantKey(participant.username),participant);
@@ -177,6 +180,7 @@ function formToConfig(){
     finalizedAt:state.config.finalizedAt||null,phase:activePhase(),postseasonQualifiers:state.config.postseasonQualifiers||[],regularSeason:state.config.regularSeason||null,corrections:state.config.corrections||[]
   };
   if(!config.leagueName)throw new Error("Indica el nombre del torneo.");
+  if(reservedLeagueName(config.leagueName))throw new Error("Asigna un nombre propio al torneo; 'principal' es solamente un identificador interno.");
   configuredRoster(config);
   return config;
 }
@@ -225,7 +229,7 @@ async function loadPublishedLeague(){
   }
   const localSync=state.lastSync?new Date(state.lastSync).getTime():0;
   const remoteSync=snapshot.lastSync?new Date(snapshot.lastSync).getTime():0;
-  const remoteConfig={...defaultConfig(),...(snapshot.config||{}),leagueName:snapshot.config?.leagueName||"Liga actual"};
+  const remoteConfig={...defaultConfig(),...(snapshot.config||{}),leagueName:visibleLeagueName(snapshot.config?.leagueName)};
   const sameSeason=state.dataSeasonKey&&state.dataSeasonKey===seasonConfigKey(remoteConfig);
   if(sameSeason&&localSync>remoteSync){setStatus("Hay una actualización local más reciente pendiente de publicar.");return;}
   applyPublishedSnapshot(snapshot);
@@ -234,7 +238,7 @@ async function loadPublishedLeague(){
 
 function slugifyLeague(value){return cleanDisplayName(value).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,63);}
 function updateLeagueSelector(){
-  const entries=[...state.leagues];
+  const entries=state.leagues.map(entry=>({...entry,name:visibleLeagueName(entry.name,entry.id)}));
   if(state.activeLeagueId&&!entries.some(entry=>entry.id===state.activeLeagueId))entries.unshift({id:state.activeLeagueId,name:state.config.leagueName||"Nuevo torneo"});
   $("#leagueSelector").innerHTML=entries.map(entry=>`<option value="${esc(entry.id)}">${esc(entry.name||entry.id)}${entry.finalizedAt?" · finalizado":""}</option>`).join("");
   $("#leagueSelector").value=state.activeLeagueId;
@@ -395,6 +399,7 @@ function refreshRegularArchiveDerived(){
 
 function startNewSeason(){
   const name=cleanDisplayName(window.prompt("Nombre del nuevo torneo:"));if(!name)return;
+  if(reservedLeagueName(name))throw new Error("El nombre debe identificar el torneo; no puede ser 'principal' ni 'Torneo principal'.");
   let id=slugifyLeague(name);if(!id)throw new Error("El nombre no permite crear un identificador válido.");
   let suffix=2;while(state.leagues.some(entry=>entry.id===id))id=`${slugifyLeague(name).slice(0,58)}-${suffix++}`;
   state.activeLeagueId=id;localStorage.setItem("mlb26_active_league",id);const url=new URL(location.href);url.searchParams.set("league",id);history.replaceState(null,"",url);

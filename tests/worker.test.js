@@ -155,11 +155,12 @@ test("administra varios torneos sin reemplazarlos",async()=>{
   assert.equal(savedAlpha.config.leagueName,"Liga Alpha");assert.equal(savedBeta.config.leagueName,"Liga Beta");
 });
 
-test("expone la liga anterior como torneo principal durante la migración",async()=>{
-  const kv=mockKv(),env={LEAGUE_STORE:kv};await kv.put("public-league-v1",JSON.stringify(snapshot()));
+test("expone la liga anterior con su nombre real durante la migración",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv},legacy=snapshot();legacy.config.leagueName="";await kv.put("public-league-v1",JSON.stringify(legacy));
   const list=await (await worker.fetch(new Request("https://worker.example/api/leagues"),env)).json();
-  assert.equal(list.leagues[0].id,"principal");
-  const league=await worker.fetch(new Request("https://worker.example/api/leagues/principal"),env);assert.equal(league.status,200);
+  assert.equal(list.leagues[0].id,"principal");assert.equal(list.leagues[0].name,"Torneo Reclutas V2");
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/principal"),env),league=await response.json();
+  assert.equal(response.status,200);assert.equal(league.config.leagueName,"Torneo Reclutas V2");
 });
 
 test("conserva cierre regular, clasificados y correcciones auditables",async()=>{
