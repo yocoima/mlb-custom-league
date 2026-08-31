@@ -349,12 +349,21 @@ export function addGameStats(acc, game, payload) {
 const RATE_PA_PER_GAME = 3.1;
 const RATE_IP_PER_GAME = 1.0;
 
-export function battingQualifies(player) {
-  return player.g > 0 && player.pa >= Math.round(player.g * RATE_PA_PER_GAME);
+function managerGames(games, manager) {
+  if (!Array.isArray(games) || !games.length) return 0;
+  return games.filter(game => sameText(game.homeUser, manager) || sameText(game.awayUser, manager)).length;
 }
 
-export function pitchingQualifies(player) {
-  return player.g > 0 && player.outs >= Math.round(player.g * RATE_IP_PER_GAME) * 3;
+export function battingQualifies(player, { games = [], regulationInnings = 9 } = {}) {
+  const teamGames = managerGames(games, player.manager) || player.g;
+  const requiredPa = Math.ceil(teamGames * RATE_PA_PER_GAME * (regulationInnings / 9) - 1e-9);
+  return teamGames > 0 && player.pa >= requiredPa;
+}
+
+export function pitchingQualifies(player, { games = [], regulationInnings = 9 } = {}) {
+  const teamGames = managerGames(games, player.manager) || player.g;
+  const requiredOuts = Math.ceil(teamGames * RATE_IP_PER_GAME * (regulationInnings / 9) * 3 - 1e-9);
+  return teamGames > 0 && player.outs >= requiredOuts;
 }
 
 export function battingLeaders(acc, sortBy = "avg") {
@@ -413,17 +422,17 @@ export function filterStatLeaders(players, { query = "", manager = "", team = ""
   );
 }
 
-export function tournamentAwards(acc) {
+export function tournamentAwards(acc, qualification = {}) {
   const batting = category => battingLeaders(acc, category);
   const pitching = category => pitchingLeaders(acc, category);
   const definitions = [
-    { key:"avg", label:"AVG", title:"Promedio", rows:batting("avg").filter(battingQualifies), metric:player=>player.avg, value:player=>player.avg.toFixed(3).replace(/^0/,"") },
+    { key:"avg", label:"AVG", title:"Promedio", rows:batting("avg").filter(player=>battingQualifies(player,qualification)), metric:player=>player.avg, value:player=>player.avg.toFixed(3).replace(/^0/,"") },
     { key:"hr", label:"HR", title:"Jonrones", rows:batting("hr"), metric:player=>player.hr, value:player=>String(player.hr), positive:true },
     { key:"h", label:"H", title:"Hits", rows:batting("h"), metric:player=>player.h, value:player=>String(player.h), positive:true },
     { key:"rbi", label:"RBI", title:"Impulsadas", rows:batting("rbi"), metric:player=>player.rbi, value:player=>String(player.rbi), positive:true },
     { key:"sb", label:"SB", title:"Bases robadas", rows:batting("sb"), metric:player=>player.sb, value:player=>String(player.sb), positive:true },
     { key:"so", label:"SO", title:"Ponches", rows:pitching("so"), metric:player=>player.so, value:player=>String(player.so), positive:true },
-    { key:"era", label:"ERA", title:"Efectividad", rows:pitching("era").filter(pitchingQualifies), metric:player=>player.era, value:player=>player.era.toFixed(2) },
+    { key:"era", label:"ERA", title:"Efectividad", rows:pitching("era").filter(player=>pitchingQualifies(player,qualification)), metric:player=>player.era, value:player=>player.era.toFixed(2) },
     { key:"sv", label:"SV", title:"Salvados", rows:pitching("sv"), metric:player=>player.sv, value:player=>String(player.sv), positive:true }
   ];
   return definitions.flatMap(definition=>{

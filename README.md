@@ -15,7 +15,7 @@ Dashboard web independiente dedicado **solo a Custom League**.
 - calcula standings: GP, W, L, PCT, RF, RA, DIFF y forma reciente;
 - carga `Game Log` incrementalmente para estadísticas de bateo y pitcheo;
 - ordena líderes por AVG, HR, hits, RBI, bases robadas, OPS, ponches, ERA, K/9, victorias y salvados;
-- exige el mínimo oficial de MLB (regla 9.22) para liderar AVG/OBP/SLG/OPS y ERA: 3.1 turnos al plato y 1 entrada lanzada por cada juego jugado por ese jugador; los líderes de conteo (HR, H, RBI, SB, SO, SV) no requieren mínimo;
+- exige mínimos proporcionales para liderar AVG/OBP/SLG/OPS y ERA: parte de 3.1 apariciones y 1 entrada por juego del equipo en formato de 9 innings, escaladas a las entradas reglamentarias del torneo; los líderes de conteo (HR, H, RBI, SB, SO, SV) no requieren mínimo;
 - muestra un panel resumido de líderes y un historial automático de campeones;
 - permite buscar jugadores y filtrar bateo o pitcheo por manager y equipo MLB;
 - administra varios torneos independientes sin reemplazar los anteriores;

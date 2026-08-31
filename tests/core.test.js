@@ -160,7 +160,7 @@ test("archiva ganadores de lideratos e incluye empates",()=>{
   assert.equal(awards.find(award=>award.key==="sv").winners[0].value,"2");
 });
 
-test("califica AVG y ERA con el mínimo oficial de 3.1 PA / 1.0 IP por juego jugado",()=>{
+test("califica AVG y ERA con el mínimo proporcional a innings y juegos del equipo",()=>{
   const base={manager:"Manager",team:"Tigers",r:0,so:0,doubles:0,triples:0,hbp:0,sf:0,cs:0};
   const smallSample={...base,name:"Racha corta",g:1,ab:1,h:1,rbi:0,bb:0,hr:0,sb:0};
   const fullSeason={...base,name:"Titular",g:2,ab:6,h:3,rbi:1,bb:1,hr:0,sb:0};
@@ -175,6 +175,15 @@ test("califica AVG y ERA con el mínimo oficial de 3.1 PA / 1.0 IP por juego jug
   const awards=tournamentAwards(acc);
   assert.equal(awards.find(award=>award.key==="avg").winners[0].player,"Titular");
   assert.equal(awards.find(award=>award.key==="era").winners[0].player,"Abridor");
+});
+
+test("en 5 innings Clark califica sobre Keith usando los juegos del manager",()=>{
+  const games=Array.from({length:7},(_,index)=>({homeUser:"yocoima_herrera",awayUser:`Rival${index}`}));
+  const qualification={games,regulationInnings:5};
+  assert.equal(battingQualifies({manager:"yocoima_herrera",g:7,pa:19},qualification),true);
+  assert.equal(battingQualifies({manager:"yocoima_herrera",g:2,pa:6},qualification),false);
+  assert.equal(pitchingQualifies({manager:"yocoima_herrera",g:2,outs:11},qualification),false);
+  assert.equal(pitchingQualifies({manager:"yocoima_herrera",g:4,outs:12},qualification),true);
 });
 
 test("consolida el mismo jugador aunque cambie p_inx, posición o decisión",()=>{

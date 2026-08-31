@@ -22,7 +22,7 @@ import {
   battingQualifies,
   pitchingQualifies,
   tournamentAwards
-} from "./src/league-core.js?v=4.1.0";
+} from "./src/league-core.js?v=4.1.2";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -111,6 +111,7 @@ function applyPublishedSnapshot(snapshot){
   state.dataSeasonKey=seasonConfigKey(state.config);
   state.viewPhase=activePhase();
   state.warnings=[];
+  if(state.config.regularSeason)refreshRegularArchiveDerived();
   saveConfig();saveState();fillForm();render();
 }
 
@@ -366,10 +367,12 @@ function effectiveStatsForPhase(phase){
 }
 function displayedPhase(){return state.viewPhase==="postseason"?"postseason":"regular";}
 function displayedStats(){return effectiveStatsForPhase(displayedPhase());}
+function qualificationForPhase(phase,games=correctedGamesForPhase(phase)){return {games,regulationInnings:Number(state.config.regulationInnings)||9};}
+function awardsForPhase(phase){const games=correctedGamesForPhase(phase);return tournamentAwards(effectiveStatsForPhase(phase),qualificationForPhase(phase,games));}
 function refreshRegularArchiveDerived(){
   if(!state.config.regularSeason)return;
   const stats=effectiveStatsForPhase("regular"),games=correctedGamesForPhase("regular"),participants=participantsForPhase("regular");
-  state.config.regularSeason={...state.config.regularSeason,standings:calculateStandings(games,participants),awards:tournamentAwards(stats,games.length)};
+  state.config.regularSeason={...state.config.regularSeason,standings:calculateStandings(games,participants),awards:tournamentAwards(stats,qualificationForPhase("regular",games))};
 }
 
 function startNewSeason(){
@@ -627,14 +630,14 @@ function openCloseRegular(){
   if(state.stats.failedGameIds.size||state.stats.loadedGameIds.size!==games.length)throw new Error("Todos los Game Logs de ronda regular deben estar cargados correctamente.");
   const standings=calculateStandings(correctedGamesForPhase("regular"),participantsForPhase("regular"));
   $("#qualifierList").innerHTML=standings.map((row,index)=>`<label><input type="checkbox" name="qualifier" value="${esc(row.user)}" ${index<4?"checked":""}/><span><strong>${esc(row.user)}</strong> · ${esc(row.team)} · ${row.w}-${row.l}</span></label>`).join("");
-  $("#regularAwardsPreview").innerHTML=awardsPreview(tournamentAwards(effectiveStatsForPhase("regular")));
+  $("#regularAwardsPreview").innerHTML=awardsPreview(awardsForPhase("regular"));
   $("#closeRegularDialog").showModal();
 }
 async function closeRegularSeason(){
   const qualifiers=[...document.querySelectorAll('input[name="qualifier"]:checked')].map(input=>input.value);if(qualifiers.length<2)throw new Error("Selecciona al menos dos clasificados.");
   const token=window.prompt("Clave privada para cerrar la ronda regular:");if(!token)return;
   const previousConfig=state.config,previousStats=state.stats,closedAt=new Date().toISOString(),games=correctedGamesForPhase("regular"),stats=effectiveStatsForPhase("regular");
-  const regularSeason={closedAt,qualifiers,gameKeys:games.map(gameKey),standings:calculateStandings(games,participantsForPhase("regular")),stats:serializeStats(previousStats),awards:tournamentAwards(stats)};
+  const regularSeason={closedAt,qualifiers,gameKeys:games.map(gameKey),standings:calculateStandings(games,participantsForPhase("regular")),stats:serializeStats(previousStats),awards:tournamentAwards(stats,qualificationForPhase("regular",games))};
   state.config={...state.config,phase:"postseason",postseasonQualifiers:qualifiers,regularSeason};state.stats=createStatAccumulator();state.viewPhase="postseason";
   try{saveConfig();await publishLeague(token);fillForm();render();closeRegularDialog();setStatus(`Ronda regular cerrada. ${qualifiers.length} clasificados y estadísticas de postemporada reiniciadas.`,"success");}
   catch(error){state.config=previousConfig;state.stats=previousStats;saveConfig();render();throw error;}
@@ -673,7 +676,7 @@ function openCorrection(){
 function refreshArchivedAwardsAfterCorrection(){
   refreshRegularArchiveDerived();
   if(!state.config.finalizedAt||!state.config.champions?.length)return;
-  const latest=state.config.champions[0];state.config.champions[0]={...latest,regularSeasonAwards:state.config.regularSeason?.awards||[],awards:tournamentAwards(effectiveStatsForPhase("postseason"))};
+  const latest=state.config.champions[0];state.config.champions[0]={...latest,regularSeasonAwards:state.config.regularSeason?.awards||[],awards:awardsForPhase("postseason")};
 }
 async function saveCorrection(){
   const phase=$("#correctionPhase").value,type=$("#correctionType").value,target=$("#correctionTarget").value,reason=cleanDisplayName($("#correctionReason").value);if(!target||!reason)throw new Error("Selecciona el dato e indica el motivo.");
@@ -702,7 +705,7 @@ function openFinishSeason(){
   $("#seasonRunnerUp").innerHTML=`<option value="">No indicar</option>${options}`;
   if(standings[0])$("#seasonChampion").value=standings[0].user;
   $("#seasonResult").value="";$("#seasonNote").value="";
-  const awards=tournamentAwards(effectiveStatsForPhase("postseason"));
+  const awards=awardsForPhase("postseason");
   $("#finishAwardsPreview").innerHTML=awardsPreview(awards);
   $("#finishSeasonDialog").showModal();
 }
@@ -719,7 +722,7 @@ async function finishSeason(){
   const entry={
     season:state.config.leagueName,champion:champion.username,team:champion.team,runnerUp,
     result:cleanDisplayName($("#seasonResult").value),note:cleanDisplayName($("#seasonNote").value),
-    finalizedAt,awards:tournamentAwards(effectiveStatsForPhase("postseason")),regularSeasonAwards:state.config.regularSeason?.awards||[]
+    finalizedAt,awards:awardsForPhase("postseason"),regularSeasonAwards:state.config.regularSeason?.awards||[]
   };
   state.config={...state.config,finalizedAt,champions:[entry,...(state.config.champions||[]).filter(item=>!sameText(item.season,state.config.leagueName))]};
   try{
@@ -734,17 +737,19 @@ function leaderCard(title,subtitle,players,value){
 }
 
 function renderLeaders(stats=displayedStats()){
+  const phase=displayedPhase(),qualification=qualificationForPhase(phase);
   const battingBy=category=>battingLeaders(stats,category);
-  const average=battingBy("avg").filter(battingQualifies);
+  const average=battingBy("avg").filter(player=>battingQualifies(player,qualification));
   const pitching=pitchingLeaders(stats,"so");
+  const paRate=(3.1*qualification.regulationInnings/9).toFixed(2),ipRate=(qualification.regulationInnings/9).toFixed(2);
   $("#leaderGrid").innerHTML=[
-    leaderCard("Promedio","AVG · mín. 3.1 PA/juego",average,player=>fmt3(player.avg)),
+    leaderCard("Promedio",`AVG · mín. ${paRate} PA/juego del equipo`,average,player=>fmt3(player.avg)),
     leaderCard("Jonrones","HR",battingBy("hr"),player=>player.hr),
     leaderCard("Hits","H",battingBy("h"),player=>player.h),
     leaderCard("Impulsadas","RBI",battingBy("rbi"),player=>player.rbi),
     leaderCard("Bases robadas","SB",battingBy("sb"),player=>player.sb),
     leaderCard("Ponches","SO · Pitcheo",pitching,player=>player.so),
-    leaderCard("Efectividad","ERA · mín. 1 IP/juego",pitchingLeaders(stats,"era").filter(pitchingQualifies),player=>player.era.toFixed(2)),
+    leaderCard("Efectividad",`ERA · mín. ${ipRate} IP/juego del equipo`,pitchingLeaders(stats,"era").filter(player=>pitchingQualifies(player,qualification)),player=>player.era.toFixed(2)),
     leaderCard("Salvados","SV",pitchingLeaders(stats,"sv"),player=>player.sv)
   ].join("");
 }
