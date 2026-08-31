@@ -784,8 +784,13 @@ function renderLeaders(stats=displayedStats()){
 }
 
 function renderChampions(){
-  const indexed=state.leagues.filter(entry=>entry.champion).map(entry=>({...entry.champion,season:entry.name||entry.champion.season,leagueId:entry.id}));
-  const local=Array.isArray(state.config.champions)?state.config.champions.map(entry=>({...entry,leagueId:state.activeLeagueId})):[];
+  const indexed=state.leagues.filter(entry=>entry.champion||(entry.regularSeasonAwards||[]).length).map(entry=>entry.champion
+    ?{...entry.champion,season:entry.name||entry.champion.season,leagueId:entry.id,pending:false}
+    :{season:entry.name||entry.id,champion:"",team:"",runnerUp:"",result:"",note:"",awards:[],regularSeasonAwards:entry.regularSeasonAwards||[],leagueId:entry.id,pending:true});
+  const local=Array.isArray(state.config.champions)?state.config.champions.map(entry=>({...entry,leagueId:state.activeLeagueId,pending:false})):[];
+  if(state.config.regularSeason&&!local.some(entry=>sameText(entry.season,state.config.leagueName))){
+    local.unshift({season:state.config.leagueName,champion:"",team:"",runnerUp:"",result:"",note:"",awards:[],regularSeasonAwards:state.config.regularSeason.awards||[],leagueId:state.activeLeagueId,pending:true});
+  }
   const champions=[...local,...indexed.filter(entry=>!local.some(item=>item.leagueId===entry.leagueId))];
   if(!champions.length){
     $("#championSpotlight").innerHTML=`<div class="empty champion-empty">Aún no se ha publicado el historial de campeones.</div>`;
@@ -793,12 +798,14 @@ function renderChampions(){
     return;
   }
   const latest=champions[0];
-  $("#championSpotlight").innerHTML=`<article class="champion-spotlight"><div class="trophy" aria-hidden="true">★</div><div><span>Último campeón · ${esc(latest.season)}</span><h3>${esc(latest.champion)}</h3><p>${latest.team?`${esc(latest.team)}`:""}${latest.runnerUp?` · Final vs. ${esc(latest.runnerUp)}`:""}${latest.result?` · ${esc(latest.result)}`:""}</p>${latest.note?`<small>${esc(latest.note)}</small>`:""}</div></article>`;
+  const latestPending=latest.pending||!latest.champion;
+  $("#championSpotlight").innerHTML=`<article class="champion-spotlight"><div class="trophy" aria-hidden="true">${latestPending?"…":"★"}</div><div><span>${latestPending?"Torneo en curso":"Último campeón"} · ${esc(latest.season)}</span><h3>${latestPending?"Campeón por definir":esc(latest.champion)}</h3><p>${latestPending?"Ronda regular finalizada · Postemporada en curso":`${latest.team?esc(latest.team):""}${latest.runnerUp?` · Final vs. ${esc(latest.runnerUp)}`:""}${latest.result?` · ${esc(latest.result)}`:""}`}</p>${latest.note?`<small>${esc(latest.note)}</small>`:""}</div></article>`;
   $("#championsHistory").innerHTML=`<h3>Historial</h3><div class="champion-grid">${champions.map((entry,index)=>{
     const regularAwards=cleanArchivedAwards(entry.regularSeasonAwards),awards=cleanArchivedAwards(entry.awards);
     const combined=[...regularAwards.map(award=>({...award,phaseLabel:"Regular"})),...awards.map(award=>({...award,phaseLabel:"Post"}))];
     const awardHtml=combined.length?`<div class="archive-awards">${combined.map(award=>`<article class="archive-award"><span>${esc(award.phaseLabel)} · ${esc(award.label)} · ${esc(award.title)}</span><small>${esc(awardWinnerNames(award))} · <strong>${esc(award.winners[0].value)}</strong></small></article>`).join("")}</div>`:"";
-    return `<article class="season-archive"><div class="champion-entry"><span class="champion-number">${String(index+1).padStart(2,"0")}</span><div><small>${esc(entry.season)}</small><strong>${esc(entry.champion)}</strong><span>${entry.team?esc(entry.team):"Equipo no indicado"}${entry.runnerUp?` · vs. ${esc(entry.runnerUp)}`:""}${entry.result?` · ${esc(entry.result)}`:""}</span></div></div>${awardHtml}</article>`;
+    const pending=entry.pending||!entry.champion;
+    return `<article class="season-archive"><div class="champion-entry"><span class="champion-number">${String(index+1).padStart(2,"0")}</span><div><small>${esc(entry.season)}</small><strong>${pending?"Campeón por definir":esc(entry.champion)}</strong><span>${pending?"Ronda regular finalizada · Postemporada en curso":`${entry.team?esc(entry.team):"Equipo no indicado"}${entry.runnerUp?` · vs. ${esc(entry.runnerUp)}`:""}${entry.result?` · ${esc(entry.result)}`:""}`}</span></div></div>${awardHtml}</article>`;
   }).join("")}</div>`;
 }
 
