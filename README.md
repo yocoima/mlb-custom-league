@@ -148,7 +148,7 @@ El selector **Torneo** permite cambiar entre torneos activos o finalizados. Tamb
 5. La postemporada comienza con tabla y estadísticas en cero. Solamente se consultan y aceptan partidos posteriores al cierre entre los clasificados elegidos.
 6. El selector **Vista** permite volver a consultar la ronda regular sin mezclarla con la postemporada.
 
-Los partidos de postemporada no modifican las posiciones ni los acumulados regulares. Desde el cierre de la ronda, **Campeones** muestra sus lideratos y mantiene el campeón como **por definir**. Al finalizar el torneo, esa misma entrada se completa con el campeón y los lideratos de postemporada.
+Los partidos de postemporada no modifican las posiciones ni los acumulados regulares. Desde el cierre de la ronda, **Campeones** muestra sus lideratos y mantiene el campeón como **por definir**, mientras el panel dorado conserva al último campeón oficial vigente. Al finalizar el torneo, esa misma entrada se completa con el nuevo campeón y los lideratos de postemporada. La numeración histórica es ascendente y no cambia cuando se agrega un torneo nuevo.
 
 ## Correcciones administrativas
 
