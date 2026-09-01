@@ -122,7 +122,7 @@ test("refresh repara un nombre antiguo y acepta sus juegos nuevos",async t=>{
   current.games[0]={...current.games[0],homeTeam:"Tigers",awayTeam:"Blue Jays"};
   await kv.put("league:corrected",JSON.stringify(current));
   const incoming=structuredClone(current);
-  incoming.games.push({id:"2",uuid:"renamed-uuid",dedupKey:"uuid:renamed-uuid",date:"08/27/2026 02:00:00",homeUser:"commissioner",awayUser:"friendCorrect",homeTeam:"Tigers",awayTeam:"Blue Jays",apiRecords:[{id:"2",username:"commissioner"}]});
+  incoming.games.push({id:"2",uuid:"renamed-uuid",dedupKey:"uuid:renamed-uuid",date:"08/27/2026 02:00:00",homeUser:"commissioner",awayUser:"friendCorrect",homeTeam:"Tigers",awayTeam:"Blue Jays",apiRecords:[{id:"2",username:"friendHistorical"}]});
   const payload={game:[
     ["line_score",{game_mode:"LEAGUE",game_uuid:"renamed-uuid",created_at:"08/27/2026 02:00:00",innings:"5",ruling:"0",home_runs:"3",away_runs:"1",home_display_result:"W",away_display_result:"L",home_player_id:"10",away_player_id:"20",home_mlb_team_id:"7",away_mlb_team_id:"14",home_full_name:"Tigers",away_full_name:"Blue Jays"}],
     ["box_score",[]]
