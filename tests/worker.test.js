@@ -204,6 +204,29 @@ test("conserva cierre regular, clasificados y correcciones auditables",async()=>
   assert.equal(saved.config.phase,"postseason");assert.equal(saved.config.regularSeason.gameKeys[0],"uuid:one");assert.equal(saved.config.corrections[0].reason,"Marcador oficial incorrecto");
 });
 
+test("conserva la exclusión administrativa y no cuenta el partido en el resumen",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"},data=snapshot();
+  data.games[0].uuid="one";
+  data.config.corrections=[{id:"exclude-1",phase:"regular",type:"exclude",gameKey:"uuid:one",reason:"Pertenece a otro torneo",createdAt:"2026-09-01T12:00:00.000Z"}];
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/copa",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env),result=await response.json();
+  assert.equal(response.status,200);assert.equal(result.games,0);
+  const saved=await (await worker.fetch(new Request("https://worker.example/api/leagues/copa"),env)).json();
+  assert.equal(saved.games.length,1);assert.equal(saved.config.corrections[0].type,"exclude");
+  const list=await (await worker.fetch(new Request("https://worker.example/api/leagues"),env)).json();
+  assert.equal(list.leagues[0].games,0);
+});
+
+test("refresh rechaza un UUID activo que ya pertenece a otro torneo",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"},owner=snapshot(),target=snapshot();
+  owner.games[0].uuid="shared-uuid";owner.games[0].dedupKey="uuid:shared-uuid";
+  target.games=[];target.stats={batting:[],pitching:[],loadedGameIds:[],failedGameIds:[]};
+  for(const [id,data] of [["anterior",owner],["actual",target]])await worker.fetch(new Request(`https://worker.example/api/leagues/${id}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
+  const current=await (await worker.fetch(new Request("https://worker.example/api/leagues/actual"),env)).json(),incoming=structuredClone(current);
+  incoming.games.push({id:"2",uuid:"shared-uuid",dedupKey:"uuid:shared-uuid",date:"09/01/2026 01:35:57",homeUser:"commissioner",awayUser:"friend",homeTeam:"Tigers",awayTeam:"Blue Jays"});
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/actual/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(incoming)}),env),saved=await response.json();
+  assert.equal(response.status,200);assert.equal(saved.games.length,0);assert.equal(saved.refresh.crossLeagueRejected,1);
+});
+
 function postseasonCandidate(current,{createdAt="08/28/2026 02:00:00",awayUser="friend"}={}){
   const incoming=structuredClone(current);
   incoming.games.push({
