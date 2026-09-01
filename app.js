@@ -277,7 +277,9 @@ async function refreshSharedLeague(){
   }
   const added=Number(result.refresh?.added||0),rejected=Number(result.refresh?.rejected||0);
   applyPublishedSnapshot(result);
-  if(rejected)warn(`${rejected} partidos candidatos no superaron la validación oficial del servidor.`);
+  const crossLeagueRejected=Number(result.refresh?.crossLeagueRejected||0);
+  if(crossLeagueRejected)warn(`${crossLeagueRejected} partido${crossLeagueRejected===1?"":"s"} ya pertenec${crossLeagueRejected===1?"e":"en"} a otro torneo y no se ${crossLeagueRejected===1?"agregó":"agregaron"}.`);
+  if(rejected-crossLeagueRejected>0)warn(`${rejected-crossLeagueRejected} partidos candidatos no superaron la validación oficial del servidor.`);
   setStatus(added?`Liga pública actualizada: ${added} partido${added===1?"":"s"} nuevo${added===1?"":"s"} y estadísticas recalculadas.`:"La liga pública ya estaba al día.","success");
 }
 
@@ -342,7 +344,9 @@ function participantsForPhase(phase){
   if(phase!=="postseason")return all;
   return all.filter(participant=>(state.config.postseasonQualifiers||[]).some(username=>sameText(username,participant.username)));
 }
-function rawGamesForPhase(phase){return [...state.games.values()].filter(game=>gamePhase(game)===phase);}
+function allGamesForPhase(phase){return [...state.games.values()].filter(game=>gamePhase(game)===phase);}
+function excludedGameKeys(phase){return new Set((state.config.corrections||[]).filter(item=>item.phase===phase&&item.type==="exclude").map(item=>item.gameKey));}
+function rawGamesForPhase(phase){const excluded=excludedGameKeys(phase);return allGamesForPhase(phase).filter(game=>!excluded.has(gameKey(game)));}
 function correctedGamesForPhase(phase){
   const corrections=(state.config.corrections||[]).filter(item=>item.phase===phase&&item.type==="result");
   return rawGamesForPhase(phase).map(game=>{
@@ -652,6 +656,7 @@ const BATTING_CORRECTION_FIELDS={ab:"Turnos (AB)",r:"Carreras (R)",h:"Hits (H)",
 const PITCHING_CORRECTION_FIELDS={outs:"Outs lanzados (3 = 1.0 IP)",h:"Hits permitidos",r:"Carreras",er:"Carreras limpias",bb:"Boletos",so:"Ponches",w:"Victorias",l:"Derrotas",sv:"Salvados",bs:"Salvados desperdiciados",hold:"Holds"};
 function closeCorrectionDialog(){if($("#correctionDialog").open)$("#correctionDialog").close();}
 function correctionDescription(item){
+  if(item.type==="exclude"){const game=state.games.get(item.gameKey);return `Excluido: ${game?.awayUser||"Visitante"} @ ${game?.homeUser||"Local"}`;}
   if(item.type==="result"){const game=state.games.get(item.gameKey);return `${game?.awayUser||"Visitante"} ${item.awayScore}-${item.homeScore} ${game?.homeUser||"Local"}`;}
   return `${item.type==="batting"?"Bateo":"Pitcheo"}: ${item.field} ${Number(item.delta)>0?"+":""}${item.delta}`;
 }
@@ -660,11 +665,13 @@ function renderCorrectionHistory(){
   $("#correctionHistory").innerHTML=items.length?items.slice().reverse().map(item=>`<article class="correction-item"><div><strong>${esc(correctionDescription(item))}</strong><br/><small>${esc(item.phase)} · ${esc(item.reason)}</small></div><button type="button" data-remove-correction="${esc(item.id)}">Eliminar</button></article>`).join(""):`<div class="empty compact">Sin correcciones registradas.</div>`;
 }
 function updateCorrectionTargets(){
-  const phase=$("#correctionPhase").value,type=$("#correctionType").value,isResult=type==="result";
-  $("#resultCorrectionFields").classList.toggle("hidden",!isResult);$("#statCorrectionFields").classList.toggle("hidden",isResult);
-  $("#correctionTargetLabel").firstChild.textContent=isResult?"Partido":"Jugador ";
-  if(isResult){
-    const games=correctedGamesForPhase(phase);$("#correctionTarget").innerHTML=games.map(game=>`<option value="${esc(gameKey(game))}">${esc(game.awayUser)} ${game.awayScore}-${game.homeScore} ${esc(game.homeUser)} · ${esc(game.date)}</option>`).join("");
+  const phase=$("#correctionPhase").value,typeSelect=$("#correctionType"),excludeOption=typeSelect.querySelector('option[value="exclude"]');
+  excludeOption.disabled=phase!==activePhase();if(typeSelect.value==="exclude"&&excludeOption.disabled)typeSelect.value="result";
+  const type=typeSelect.value,isResult=type==="result",isGame=isResult||type==="exclude";
+  $("#resultCorrectionFields").classList.toggle("hidden",!isResult);$("#statCorrectionFields").classList.toggle("hidden",isGame);
+  $("#correctionTargetLabel").firstChild.textContent=isGame?"Partido":"Jugador ";
+  if(isGame){
+    const games=type==="exclude"?allGamesForPhase(phase).filter(game=>!excludedGameKeys(phase).has(gameKey(game))):correctedGamesForPhase(phase);$("#correctionTarget").innerHTML=games.map(game=>`<option value="${esc(gameKey(game))}">${esc(game.awayUser)} ${game.awayScore}-${game.homeScore} ${esc(game.homeUser)} · ${esc(game.date)}</option>`).join("");
   }else{
     const stats=effectiveStatsForPhase(phase),map=type==="batting"?stats.batting:stats.pitching;
     $("#correctionTarget").innerHTML=[...map.entries()].sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([key,player])=>`<option value="${esc(key)}">${esc(player.name)} · ${esc(player.manager)}</option>`).join("");
@@ -687,13 +694,14 @@ async function saveCorrection(){
   const phase=$("#correctionPhase").value,type=$("#correctionType").value,target=$("#correctionTarget").value,reason=cleanDisplayName($("#correctionReason").value);if(!target||!reason)throw new Error("Selecciona el dato e indica el motivo.");
   const correction={id:crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`,phase,type,gameKey:"",playerKey:"",field:"",delta:0,homeScore:0,awayScore:0,reason,createdAt:new Date().toISOString()};
   if(type==="result"){correction.gameKey=target;correction.awayScore=Number($("#correctAwayScore").value);correction.homeScore=Number($("#correctHomeScore").value);if(!Number.isInteger(correction.awayScore)||!Number.isInteger(correction.homeScore)||correction.awayScore<0||correction.homeScore<0||correction.awayScore===correction.homeScore)throw new Error("El marcador debe contener enteros no negativos y no puede terminar empatado.");}
+  else if(type==="exclude"){if(phase!==activePhase())throw new Error("Solo puedes excluir partidos de la fase activa.");correction.gameKey=target;}
   else{correction.playerKey=target;correction.field=$("#correctionField").value;correction.delta=Number($("#correctionDelta").value);if(!Number.isInteger(correction.delta)||correction.delta===0)throw new Error("El ajuste debe ser un entero distinto de cero.");}
-  const token=window.prompt("Clave privada para publicar la corrección:");if(!token)return;const previousConfig=structuredClone(state.config);state.config={...state.config,corrections:[...(state.config.corrections||[]),correction]};refreshArchivedAwardsAfterCorrection();
-  try{saveConfig();await publishLeague(token);render();closeCorrectionDialog();setStatus("Corrección publicada y aplicada en todas las vistas.","success");}catch(error){state.config=previousConfig;saveConfig();render();throw error;}
+  const token=window.prompt("Clave privada para publicar la corrección:");if(!token)return;const previousConfig=structuredClone(state.config),previousStats=deserializeStats(serializeStats(state.stats));state.config={...state.config,corrections:[...(state.config.corrections||[]),correction]};
+  try{if(type==="exclude"){state.stats=createStatAccumulator();if(rawGamesForPhase(activePhase()).length)await loadStats();}refreshArchivedAwardsAfterCorrection();saveConfig();await publishLeague(token);render();closeCorrectionDialog();setStatus(type==="exclude"?"Partido excluido de este torneo; tabla y estadísticas recalculadas.":"Corrección publicada y aplicada en todas las vistas.","success");}catch(error){state.config=previousConfig;state.stats=previousStats;saveConfig();render();throw error;}
 }
 async function removeCorrection(id){
-  const token=window.prompt("Clave privada para eliminar la corrección:");if(!token)return;const previousConfig=structuredClone(state.config);state.config={...state.config,corrections:(state.config.corrections||[]).filter(item=>item.id!==id)};refreshArchivedAwardsAfterCorrection();
-  try{saveConfig();await publishLeague(token);renderCorrectionHistory();render();setStatus("Corrección eliminada.","success");}catch(error){state.config=previousConfig;saveConfig();render();throw error;}
+  const token=window.prompt("Clave privada para eliminar la corrección:");if(!token)return;const previousConfig=structuredClone(state.config),previousStats=deserializeStats(serializeStats(state.stats)),removed=(state.config.corrections||[]).find(item=>item.id===id);state.config={...state.config,corrections:(state.config.corrections||[]).filter(item=>item.id!==id)};
+  try{if(removed?.type==="exclude"){state.stats=createStatAccumulator();if(rawGamesForPhase(activePhase()).length)await loadStats();}refreshArchivedAwardsAfterCorrection();saveConfig();await publishLeague(token);renderCorrectionHistory();render();setStatus("Corrección eliminada.","success");}catch(error){state.config=previousConfig;state.stats=previousStats;saveConfig();render();throw error;}
 }
 
 function closeFinishSeason(){if($("#finishSeasonDialog").open)$("#finishSeasonDialog").close();}

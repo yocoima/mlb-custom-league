@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:www.mlb.com)",
+      "WebFetch(domain:www.metroleague.org)",
+      "PowerShell(Invoke-RestMethod -Uri \"https://mlb26-custom-league-proxy.yocoimadejesus.workers.dev/api/league\" -Method Get | ConvertTo-Json -Depth 6 -Compress | Out-File -FilePath \"$env:TEMP\\\\league-snapshot.json\" -Encoding utf8; \\(Get-Item \"$env:TEMP\\\\league-snapshot.json\"\\).Length)",
+      "PowerShell(npm test 2>&1)",
+      "PowerShell(git config user.name)",
+      "PowerShell(git config user.email)",
+      "PowerShell($env:PATH -split ';')"
+    ]
+  }
+}

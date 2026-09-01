@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=4.2.0" />
+  <link rel="stylesheet" href="styles.css?v=4.2.1" />
 </head>
 <body>
   <header class="topbar">
@@ -187,7 +187,7 @@
     <form id="correctionForm" class="form">
       <div class="dialog-head"><div><span>Ajuste administrativo</span><h2>Corregir resultados o estadísticas</h2></div><button id="cancelCorrectionBtn" class="dialog-close" type="button" aria-label="Cerrar">×</button></div>
       <p>El dato oficial se conserva y el ajuste queda registrado con su motivo.</p>
-      <div class="two"><label>Fase<select id="correctionPhase"></select></label><label>Tipo<select id="correctionType"><option value="result">Resultado</option><option value="batting">Estadística de bateo</option><option value="pitching">Estadística de pitcheo</option></select></label></div>
+      <div class="two"><label>Fase<select id="correctionPhase"></select></label><label>Tipo<select id="correctionType"><option value="result">Resultado</option><option value="exclude">Excluir partido de este torneo</option><option value="batting">Estadística de bateo</option><option value="pitching">Estadística de pitcheo</option></select></label></div>
       <label id="correctionTargetLabel">Partido<select id="correctionTarget" required></select></label>
       <div id="resultCorrectionFields" class="two"><label>Carreras visitante<input id="correctAwayScore" type="number" min="0" /></label><label>Carreras local<input id="correctHomeScore" type="number" min="0" /></label></div>
       <div id="statCorrectionFields" class="two hidden"><label>Categoría<select id="correctionField"></select></label><label>Ajuste (+/-)<input id="correctionDelta" type="number" step="1" /></label></div>
@@ -198,6 +198,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.2.0"></script>
+  <script type="module" src="app.js?v=4.2.1"></script>
 </body>
 </html>
