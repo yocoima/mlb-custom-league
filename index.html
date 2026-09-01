@@ -6,23 +6,31 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=4.1.0" />
+  <link rel="stylesheet" href="styles.css?v=4.2.0" />
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <div class="eyebrow">MLB THE SHOW 26</div>
-      <h1>Custom League Manager</h1>
-      <p id="currentLeagueName">Solo Custom League · Game History + Game Log</p>
+    <div class="brand-block">
+      <img class="brand-logo" src="img/logo_mlb.png" alt="MLB The Show 26" />
+      <div>
+        <div class="eyebrow">MLB THE SHOW 26</div>
+        <h1>Custom League Manager</h1>
+        <p id="currentLeagueName">Solo Custom League · Game History + Game Log</p>
+      </div>
     </div>
     <label class="league-switcher">Torneo<select id="leagueSelector" aria-label="Seleccionar torneo"></select></label>
     <div class="top-actions">
       <button id="syncBtn" class="btn primary">Actualizar liga</button>
-      <button id="statsBtn" class="btn">Recargar estadísticas</button>
-      <button id="publishBtn" class="btn">Publicar liga</button>
-      <button id="closeRegularBtn" class="btn">Finalizar ronda regular</button>
-      <button id="correctionBtn" class="btn">Corregir datos</button>
-      <button id="finishSeasonBtn" class="btn finish">Finalizar torneo</button>
+      <details class="action-disclosure">
+        <summary class="btn action-toggle">Más opciones</summary>
+        <div class="secondary-actions">
+          <button id="statsBtn" class="btn">Recargar estadísticas</button>
+          <button id="publishBtn" class="btn">Publicar liga</button>
+          <button id="closeRegularBtn" class="btn">Finalizar ronda regular</button>
+          <button id="correctionBtn" class="btn">Corregir datos</button>
+          <button id="finishSeasonBtn" class="btn finish">Finalizar torneo</button>
+        </div>
+      </details>
     </div>
   </header>
 
@@ -35,12 +43,18 @@
       <strong id="phaseStatus">Ronda regular</strong>
     </section>
 
-    <section class="cards grid">
-      <article class="stat"><span>Participantes</span><strong id="participantCount">0</strong></article>
-      <article class="stat"><span>Partidos League</span><strong id="gameCount">0</strong></article>
-      <article class="stat"><span>Game Logs cargados</span><strong id="logCount">0</strong></article>
-      <article class="stat"><span>Última sincronización</span><strong id="lastSync">—</strong></article>
-    </section>
+    <details class="dashboard-summary">
+      <summary><span>Resumen de la liga</span><span class="collapse-label" aria-hidden="true"></span></summary>
+      <div class="summary-layout">
+        <img class="tournament-art" src="img/wekend.jpg" alt="Arte Weekend Classic" loading="lazy" />
+        <section class="cards grid">
+          <article class="stat"><span>Participantes</span><strong id="participantCount">0</strong></article>
+          <article class="stat"><span>Partidos League</span><strong id="gameCount">0</strong></article>
+          <article class="stat"><span>Game Logs cargados</span><strong id="logCount">0</strong></article>
+          <article class="stat"><span>Última sincronización</span><strong id="lastSync">—</strong></article>
+        </section>
+      </div>
+    </details>
 
     <nav class="tabs" aria-label="Secciones">
       <button class="tab active" data-tab="standings">Posiciones</button>
@@ -56,7 +70,7 @@
     <section id="standings" class="panel active">
       <div class="panel-head"><div><h2>Standings</h2><p>Calculados con partidos LEAGUE que coinciden con el roster, equipos y fecha inicial configurados.</p></div></div>
       <div class="table-wrap standings-wrap"><table class="standings-table">
-        <thead><tr><th>#</th><th>Jugador</th><th class="desktop-only">Equipo</th><th class="desktop-only">GP</th><th class="desktop-only" title="Juegos como local">Casa</th><th class="desktop-only" title="Juegos como visitante">Visita</th><th class="desktop-only">W</th><th class="desktop-only">L</th><th class="mobile-only">Récord</th><th>PCT</th><th class="desktop-only" title="Carreras anotadas">RF</th><th class="desktop-only" title="Carreras permitidas">RA</th><th title="RF - RA">DIFF</th><th class="desktop-only">Forma</th></tr></thead>
+        <thead><tr><th>#</th><th>Jugador</th><th class="desktop-only">Equipo</th><th class="desktop-only">GP</th><th class="desktop-only">W</th><th class="desktop-only">L</th><th class="mobile-only">Récord</th><th class="desktop-only" title="Juegos como local">Casa</th><th class="desktop-only" title="Juegos como visitante">Visita</th><th>PCT</th><th class="desktop-only" title="Carreras anotadas">RF</th><th class="desktop-only" title="Carreras permitidas">RA</th><th title="RF - RA">DIFF</th><th class="desktop-only">Forma</th></tr></thead>
         <tbody id="standingsBody"><tr><td colspan="14" class="empty">Sin datos.</td></tr></tbody>
       </table></div>
     </section>
@@ -184,6 +198,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.1.4"></script>
+  <script type="module" src="app.js?v=4.2.0"></script>
 </body>
 </html>
