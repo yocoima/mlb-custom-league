@@ -1,6 +1,7 @@
 import {
   cleanDisplayName,
   sameText,
+  matchRosterParticipant,
   isCpuName,
   historyRows,
   isLeagueRow,
@@ -22,7 +23,7 @@ import {
   battingQualifies,
   pitchingQualifies,
   tournamentAwards
-} from "./src/league-core.js?v=4.1.3";
+} from "./src/league-core.js?v=4.1.4";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -397,6 +398,10 @@ function rosterMemberForName(name,roster){
   return [...roster.values()].find(p=>p.aliases.some(alias=>sameText(alias,clean)))||null;
 }
 
+function verifiedRosterMemberForOpponent(name,team,roster){
+  return matchRosterParticipant(name,team,[...roster.values()],[...state.participants.values()]);
+}
+
 function addParticipant(p){
   const key=participantKey(p.username); if(!key)return null;
   const old=state.participants.get(key);
@@ -423,7 +428,7 @@ function canonicalCandidate(row,p,roster){
   if(!gameBelongsToParticipantLeague(game,p))return null;
   const opponent=opponentFromGame(game,p.username,p.team);
   if(!opponent?.user||isCpuName(opponent.user))return null;
-  const opponentMember=rosterMemberForName(opponent.user,roster);
+  const opponentMember=verifiedRosterMemberForOpponent(opponent.user,opponent.team,roster);
   if(!opponentMember||!sameText(opponentMember.team,opponent.team))return null;
   if(activePhase()==="postseason"&&!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,opponentMember.username)))return null;
   if(game.querySide==="home"){

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   cleanDisplayName,isLeagueRow,normalizeHistoryGame,opponentFromGame,participantTeamFromGame,
   showDateKey,isOnOrAfterStartDate,gameFingerprint,
-  scoreThroughInning,isCompatibleWithRegulationInnings,
+  scoreThroughInning,isCompatibleWithRegulationInnings,matchRosterParticipant,
   isFormallyCompletedGame,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards,
   battingQualifies,pitchingQualifies,filterStatLeaders
@@ -13,6 +13,17 @@ test("filtra LEAGUE y limpia códigos de formato",()=>{
   assert.equal(isLeagueRow({game_mode:"LEAGUE"}),true);
   assert.equal(isLeagueRow({game_mode:"ARENA"}),false);
   assert.equal(cleanDisplayName("Gaboandres20 ^b53^"),"Gaboandres20");
+});
+
+test("reconcilia un nombre historico solo con equipo unico e identidad verificada",()=>{
+  const roster=[
+    {username:"anzony0702",team:"Guardians",aliases:[]},
+    {username:"rival",team:"Yankees",aliases:[]}
+  ];
+  assert.equal(matchRosterParticipant("Petare11","Guardians",roster,[]),null);
+  assert.equal(matchRosterParticipant("Petare11","Guardians",roster,[{username:"anzony0702",playerId:"10840069"}])?.username,"anzony0702");
+  assert.equal(matchRosterParticipant("rival","Yankees",roster,[])?.username,"rival");
+  assert.equal(matchRosterParticipant("Petare11","Guardians",[...roster,{username:"otro",team:"Guardians",aliases:[]}],[{username:"anzony0702",playerId:"10840069"}]),null);
 });
 
 test("resuelve CPU como el usuario consultado",()=>{

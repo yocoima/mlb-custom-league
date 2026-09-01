@@ -212,5 +212,6 @@ No maneja credenciales privadas y fuerza `mode=all` para Game History.
 - La API pública no expone un identificador de Custom League en los JSON de muestra usados para esta versión.
 - Game Log de MLB The Show puede fallar para IDs válidos; la UI informa cobertura parcial.
 - Un alias debe declararse en el roster si el nombre histórico difiere del usuario configurado.
+- Si el participante ya tiene un `player_id` verificado, un nombre histórico distinto puede reconciliarse automáticamente cuando el equipo identifica a un único integrante del roster; el Game Log vuelve a validar el `player_id` antes de aceptar el partido.
 - La sincronización puede requerir más páginas si un participante tiene mucha actividad.
 - El campo `er` (carreras limpias) del Game Log oficial no siempre es confiable: se observaron pitching_stats con `r` (carreras totales) mayor que cero pero `er` en cero en el mismo box score. La app usa `er` tal como lo entrega la API, así que el ERA calculado puede subestimar carreras limpias reales en esos juegos puntuales. No es un error de esta aplicación; es una limitación de los datos que entrega MLB The Show 26.

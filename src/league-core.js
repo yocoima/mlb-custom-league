@@ -17,6 +17,18 @@ export function sameText(a, b) {
   return cleanDisplayName(a).localeCompare(cleanDisplayName(b), undefined, { sensitivity: "accent" }) === 0;
 }
 
+export function matchRosterParticipant(name, team, roster = [], verified = []) {
+  const direct = roster.find(member =>
+    sameText(member?.username, name) ||
+    (member?.aliases ?? []).some(alias => sameText(alias, name))
+  );
+  if (direct) return direct;
+  const byTeam = roster.filter(member => sameText(member?.team, team));
+  if (byTeam.length !== 1) return null;
+  const known = verified.find(member => sameText(member?.username, byTeam[0].username));
+  return known?.playerId ? byTeam[0] : null;
+}
+
 export function toNumber(value, fallback = null) {
   if (value === null || value === undefined || value === "") return fallback;
   const n = Number(value);
