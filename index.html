@@ -153,7 +153,7 @@
       </form>
       <div class="info-box">
         <strong>Cómo identifica la liga</strong>
-        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. Solo cuenta juegos terminados formalmente (<code>ruling = 0</code>) y valida las entradas reglamentarias: un juego más largo solo se acepta si estaba empatado al terminar la última entrada reglamentaria. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
+        <p>La API pública no expone un <code>league_id</code>. Esta versión consulta únicamente a los participantes configurados y acepta partidos <code>LEAGUE</code> posteriores a la fecha inicial donde ambos usuarios conservan sus equipos asignados. Solo cuenta juegos terminados formalmente (<code>ruling = 0</code>) y valida las entradas reglamentarias: un juego más largo solo se acepta si estaba empatado al terminar la última entrada reglamentaria; uno más corto requiere una terminación válida por diferencia de 10 carreras o más. Game Log aporta <code>player_id</code> y <code>game_uuid</code> para verificar identidades y evitar duplicados.</p>
       </div>
     </section>
   </main>
@@ -198,6 +198,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.2.1"></script>
+  <script type="module" src="app.js?v=4.2.2"></script>
 </body>
 </html>

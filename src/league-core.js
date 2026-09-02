@@ -234,11 +234,18 @@ export function scoreThroughInning(lineScore, side, inning) {
   });
 
   if (inningSlots.length) {
-    return inningSlots.reduce((runs, { slot, actualInning }) =>
+    const visibleThroughInning = inningSlots.reduce((runs, { slot, actualInning }) =>
       actualInning <= inning
         ? runs + (toNumber(lineScore?.[`${side}_runs_${slot}`], 0) ?? 0)
         : runs
     , 0);
+    const visibleTotal = inningSlots.reduce((runs, { slot }) =>
+      runs + (toNumber(lineScore?.[`${side}_runs_${slot}`], 0) ?? 0)
+    , 0);
+    const gameTotal = toNumber(lineScore?.[`${side}_runs`]);
+    const firstVisibleInning = Math.min(...inningSlots.map(({ actualInning }) => actualInning));
+    const omittedEarlierRuns = gameTotal === null ? 0 : Math.max(0, gameTotal - visibleTotal);
+    return visibleThroughInning + (inning >= firstVisibleInning - 1 ? omittedEarlierRuns : 0);
   }
 
   let runs = 0;
@@ -252,7 +259,12 @@ export function isCompatibleWithRegulationInnings(lineScore, regulationInnings) 
   const regulation = Math.max(1, Math.trunc(toNumber(regulationInnings, 0) ?? 0));
   const played = Math.max(0, Math.trunc(toNumber(lineScore?.innings, 0) ?? 0));
   if (!regulation || !played) return false;
-  if (played <= regulation) return true;
+  if (played === regulation) return true;
+  if (played < regulation) {
+    const homeRuns = toNumber(lineScore?.home_runs);
+    const awayRuns = toNumber(lineScore?.away_runs);
+    return played >= 4 && homeRuns !== null && awayRuns !== null && Math.abs(homeRuns - awayRuns) >= 10;
+  }
   const homeAtRegulation = scoreThroughInning(lineScore, "home", regulation);
   const awayAtRegulation = scoreThroughInning(lineScore, "away", regulation);
   return homeAtRegulation === awayAtRegulation;
