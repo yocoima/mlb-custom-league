@@ -131,6 +131,21 @@ test("reconstruye la primera entrada omitida en un juego real de 10 innings",()=
   assert.equal(isCompatibleWithRegulationInnings(tenInningGame,9),true);
 });
 
+test("no impone un máximo a los extra innings legítimos",()=>{
+  for(const played of [10,11,12,18,25]){
+    const firstVisible=Math.max(1,played-8);
+    const lineScore={innings:String(played),home_runs:"3",away_runs:"2"};
+    for(let slot=1;slot<=9;slot++){
+      const actual=firstVisible+slot-1;
+      if(actual>played)break;
+      lineScore[`inning_${slot}`]=String(actual);
+      lineScore[`home_runs_${slot}`]=actual===played?"1":"0";
+      lineScore[`away_runs_${slot}`]="0";
+    }
+    assert.equal(isCompatibleWithRegulationInnings(lineScore,9),true,`${played} entradas`);
+  }
+});
+
 test("excluye juegos interrumpidos o decididos por ruling",()=>{
   const completed={ruling:"0",innings:"5",away_runs:"3",home_runs:"6",away_display_result:"L",home_display_result:"W"};
   const interrupted={ruling:"6",innings:"3",away_runs:"3",home_runs:"2",away_display_result:"L",home_display_result:"W"};

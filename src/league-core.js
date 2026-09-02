@@ -265,6 +265,8 @@ export function isCompatibleWithRegulationInnings(lineScore, regulationInnings) 
     const awayRuns = toNumber(lineScore?.away_runs);
     return played >= 4 && homeRuns !== null && awayRuns !== null && Math.abs(homeRuns - awayRuns) >= 10;
   }
+  // No hay máximo de extra innings: se valida el empate al cierre de la
+  // entrada reglamentaria aunque la API solo conserve sus últimas 9 columnas.
   const homeAtRegulation = scoreThroughInning(lineScore, "home", regulation);
   const awayAtRegulation = scoreThroughInning(lineScore, "away", regulation);
   return homeAtRegulation === awayAtRegulation;
