@@ -209,6 +209,28 @@ test("administra varios torneos sin reemplazarlos",async()=>{
   assert.equal(savedAlpha.config.leagueName,"Liga Alpha");assert.equal(savedBeta.config.leagueName,"Liga Beta");
 });
 
+test("el salón global reúne y deduplica campeones de todos los torneos",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"};
+  const v2=snapshot();
+  v2.config.leagueName="Torneo Reclutas V2";
+  v2.config.champions=[
+    {season:"Torneo Reclutas V2",champion:"commissioner",team:"Tigers",finalizedAt:"2026-09-01T00:00:00.000Z"},
+    {season:"Torneo Reclutas V1",champion:"friend",team:"Blue Jays",result:"4-2"}
+  ];
+  const v3=snapshot();
+  v3.config.leagueName="Torneo Reclutas V3";
+  v3.config.champions=[];
+  v3.games=[];v3.stats.loadedGameIds=[];
+  for(const [id,data] of [["reclutas-v2",v2],["reclutas-v3",v3]]){
+    const response=await worker.fetch(new Request(`https://worker.example/api/leagues/${id}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
+    assert.equal(response.status,200);
+  }
+  const response=await worker.fetch(new Request("https://worker.example/api/champions"),env),hall=await response.json();
+  assert.equal(response.status,200);
+  assert.deepEqual(hall.champions.map(entry=>entry.season),["Torneo Reclutas V2","Torneo Reclutas V1"]);
+  assert.deepEqual(hall.champions.map(entry=>entry.champion),["commissioner","friend"]);
+});
+
 test("expone la liga anterior con su nombre real durante la migración",async()=>{
   const kv=mockKv(),env={LEAGUE_STORE:kv},legacy=snapshot();legacy.config.leagueName="";await kv.put("public-league-v1",JSON.stringify(legacy));
   const list=await (await worker.fetch(new Request("https://worker.example/api/leagues"),env)).json();
