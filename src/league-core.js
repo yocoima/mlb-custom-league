@@ -263,7 +263,18 @@ export function isCompatibleWithRegulationInnings(lineScore, regulationInnings) 
   if (played < regulation) {
     const homeRuns = toNumber(lineScore?.home_runs);
     const awayRuns = toNumber(lineScore?.away_runs);
-    return played >= 4 && homeRuns !== null && awayRuns !== null && Math.abs(homeRuns - awayRuns) >= 10;
+    const ruling = Math.trunc(toNumber(lineScore?.ruling, 0) ?? 0);
+    const officialMinimum = Math.min(5, regulation);
+    const validInterruptedGame =
+      ruling !== 0 &&
+      played >= officialMinimum &&
+      isFormallyCompletedGame(lineScore, regulation);
+    const mercyRule =
+      played >= 4 &&
+      homeRuns !== null &&
+      awayRuns !== null &&
+      Math.abs(homeRuns - awayRuns) >= 10;
+    return validInterruptedGame || mercyRule;
   }
   // No hay máximo de extra innings: se valida el empate al cierre de la
   // entrada reglamentaria aunque la API solo conserve sus últimas 9 columnas.
@@ -272,11 +283,8 @@ export function isCompatibleWithRegulationInnings(lineScore, regulationInnings) 
   return homeAtRegulation === awayAtRegulation;
 }
 
-export function isFormallyCompletedGame(lineScore) {
+export function isFormallyCompletedGame(lineScore, regulationInnings = 0) {
   if (!lineScore) return false;
-  const ruling = Math.trunc(toNumber(lineScore.ruling, 0) ?? 0);
-  if (ruling !== 0) return false;
-
   const homeResult = cleanDisplayName(lineScore.home_display_result).toUpperCase();
   const awayResult = cleanDisplayName(lineScore.away_display_result).toUpperCase();
   const hasWinnerAndLoser =
@@ -284,7 +292,17 @@ export function isFormallyCompletedGame(lineScore) {
     (homeResult === "L" && awayResult === "W");
   const homeRuns = toNumber(lineScore.home_runs);
   const awayRuns = toNumber(lineScore.away_runs);
-  return hasWinnerAndLoser && homeRuns !== null && awayRuns !== null && homeRuns !== awayRuns;
+  if (!hasWinnerAndLoser || homeRuns === null || awayRuns === null || homeRuns === awayRuns) return false;
+
+  const ruling = Math.trunc(toNumber(lineScore.ruling, 0) ?? 0);
+  if (ruling === 0) return true;
+
+  // MLB The Show marca desconexiones y concesiones con ruling != 0. Se
+  // consideran oficiales cuando ya alcanzaron cinco entradas (o todas las
+  // reglamentarias en torneos más cortos) y la API otorgó una decisión W/L.
+  const regulation = Math.max(0, Math.trunc(toNumber(regulationInnings, 0) ?? 0));
+  const played = Math.max(0, Math.trunc(toNumber(lineScore.innings, 0) ?? 0));
+  return regulation > 0 && played >= Math.min(5, regulation);
 }
 
 export function baseballIpToOuts(value) {

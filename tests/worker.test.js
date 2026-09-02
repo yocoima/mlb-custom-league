@@ -115,6 +115,29 @@ test("POST /api/league/refresh agrega solo juegos verificados y sus estadística
   assert.equal(saved.stats.pitching[0][1].sv,1);
 });
 
+test("refresh acepta una desconexión oficial después de cinco entradas",async t=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();
+  current.config.regulationInnings=9;
+  current.publishedAt="same";
+  await kv.put("public-league-v1",JSON.stringify(current));
+  const incoming=structuredClone(current);
+  incoming.games.push({
+    id:"2",uuid:"disconnect-uuid",dedupKey:"uuid:disconnect-uuid",date:"09/02/2026 19:44:28",
+    homeUser:"commissioner",awayUser:"friend",homeTeam:"Tigers",awayTeam:"Blue Jays",
+    homePlayerId:"10",awayPlayerId:"20",apiRecords:[{id:"2",username:"commissioner"}]
+  });
+  const payload={game:[
+    ["line_score",{game_mode:"LEAGUE",game_uuid:"disconnect-uuid",created_at:"09/02/2026 19:44:28",innings:"9",ruling:"6",home_runs:"8",away_runs:"2",home_display_result:"W",away_display_result:"L",home_player_id:"10",away_player_id:"20",home_mlb_team_id:"7",away_mlb_team_id:"14",home_full_name:"Tigers",away_full_name:"Blue Jays"}],
+    ["box_score",[]]
+  ]};
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify(payload),{status:200,headers:{"Content-Type":"application/json"}}));
+  const response=await worker.fetch(new Request("https://worker.example/api/league/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(incoming)}),env);
+  const saved=await response.json();
+  assert.equal(response.status,200);
+  assert.equal(saved.refresh.added,1);
+  assert.equal(saved.games.at(-1).ruling,"6");
+});
+
 test("refresh repara un nombre antiguo y acepta sus juegos nuevos",async t=>{
   const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();
   current.publishedAt="same";

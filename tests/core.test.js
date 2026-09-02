@@ -146,13 +146,16 @@ test("no impone un máximo a los extra innings legítimos",()=>{
   }
 });
 
-test("excluye juegos interrumpidos o decididos por ruling",()=>{
+test("acepta juegos con ruling después del mínimo oficial y excluye caídas tempranas",()=>{
   const completed={ruling:"0",innings:"5",away_runs:"3",home_runs:"6",away_display_result:"L",home_display_result:"W"};
   const interrupted={ruling:"6",innings:"3",away_runs:"3",home_runs:"2",away_display_result:"L",home_display_result:"W"};
+  const officialDisconnect={ruling:"6",innings:"5",away_runs:"2",home_runs:"8",away_display_result:"L",home_display_result:"W"};
   const tied={ruling:"0",innings:"5",away_runs:"1",home_runs:"1",away_display_result:"L",home_display_result:"W"};
-  assert.equal(isFormallyCompletedGame(completed),true);
-  assert.equal(isFormallyCompletedGame(interrupted),false);
-  assert.equal(isFormallyCompletedGame(tied),false);
+  assert.equal(isFormallyCompletedGame(completed,9),true);
+  assert.equal(isFormallyCompletedGame(interrupted,9),false);
+  assert.equal(isFormallyCompletedGame(officialDisconnect,9),true);
+  assert.equal(isCompatibleWithRegulationInnings(officialDisconnect,9),true);
+  assert.equal(isFormallyCompletedGame(tied,9),false);
 });
 
 test("IP de béisbol se suma por outs",()=>{

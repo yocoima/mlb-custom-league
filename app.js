@@ -23,7 +23,7 @@ import {
   battingQualifies,
   pitchingQualifies,
   tournamentAwards
-} from "./src/league-core.js?v=4.2.2";
+} from "./src/league-core.js?v=4.2.3";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -559,7 +559,7 @@ async function discoverLeague(){
       continue;
     }
     if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")continue;
-    if(!isFormallyCompletedGame(lineScore)){
+    if(!isFormallyCompletedGame(lineScore,cfg.regulationInnings)){
       excludedUnfinished++;
       unfinishedDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ruling ${lineScore.ruling??"?"}, ${lineScore.innings??"?"} entradas`);
       continue;
@@ -594,7 +594,7 @@ async function discoverLeague(){
   }
 
   if(failedLogs)warn(`${failedLogs} partidos se omitieron porque Game Log no permitió validar UUID, identidad y entradas.`);
-  if(excludedUnfinished)warn(`${excludedUnfinished} partidos interrumpidos, empatados o decididos por ruling se excluyeron: ${unfinishedDetails.join("; ")}.`);
+  if(excludedUnfinished)warn(`${excludedUnfinished} partidos se excluyeron porque terminaron empatados, no tienen decisión W/L o fueron interrumpidos antes de ${Math.min(5,cfg.regulationInnings)} entradas: ${unfinishedDetails.join("; ")}.`);
   if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas: ${inningsDetails.join("; ")}.`);
   if(!state.games.size) throw new Error("No se pudieron validar partidos pertenecientes a la liga configurada.");
   state.lastSync=new Date().toISOString();state.dataSeasonKey=nextSeasonKey;saveState();render();

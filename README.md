@@ -38,7 +38,7 @@ La API pública no expone `league_id`, nombre de liga ni roster oficial. Para ev
 2. roster `usuario -> equipo MLB`;
 3. ambos jugadores deben pertenecer al roster;
 4. ambos deben usar el equipo asignado;
-5. el juego debe haber terminado formalmente: `ruling = 0`, marcador no empatado y resultado oficial `W/L`;
+5. el juego debe tener marcador no empatado y resultado oficial `W/L`; si terminó por desconexión o concesión (`ruling != 0`), debe haber alcanzado al menos 5 entradas (o todas las reglamentarias si el torneo es más corto);
 6. un juego que supera las entradas reglamentarias debe haber estado empatado al finalizar la última de ellas;
 7. `player_id` verifica la identidad y `game_uuid` identifica el partido globalmente.
 
