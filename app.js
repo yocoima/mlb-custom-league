@@ -25,6 +25,8 @@ import {
   tournamentAwards
 } from "./src/league-core.js?v=4.2.4";
 
+import { sortStatRows } from "./src/update-review.js?v=4.3.0";
+
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
 const STATE_KEY = "mlb26_custom_league_state_v3";
@@ -46,6 +48,7 @@ const state = {
   globalChampions: [],
   pendingChampions: [],
   viewPhase: "regular",
+  syncing: false,
   warnings: []
 };
 
@@ -95,7 +98,7 @@ function reservedLeagueName(value){return ["principal","torneo principal"].inclu
 
 function publicSnapshot(){
   return {
-    version:1,lastSync:state.lastSync,config:{...state.config,leagueId:state.activeLeagueId,platform:"psn",proxyBase:state.config.proxyBase||DEFAULT_PROXY_BASE},
+    version:1,lastSync:state.lastSync,publishedAt:state.publishedAt,config:{...state.config,leagueId:state.activeLeagueId,platform:"psn",proxyBase:state.config.proxyBase||DEFAULT_PROXY_BASE},
     participants:[...state.participants.values()],
     games:[...state.games.values()].map(({raw,...game})=>({...game,phase:gamePhase(game),dateValue:game.dateValue?.toISOString?.()||null})),
     stats:serializeStats(state.stats)
@@ -282,6 +285,7 @@ async function publishLeague(providedToken=""){
 }
 
 async function refreshSharedLeague(){
+  const submitted=[...state.games.values()];
   const response=await fetch(`${leagueApiUrl()}/refresh`,{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify(publicSnapshot())});
   let result={};try{result=await response.json()}catch{}
   if(!response.ok){
@@ -291,6 +295,7 @@ async function refreshSharedLeague(){
   }
   const added=Number(result.refresh?.added||0),rejected=Number(result.refresh?.rejected||0);
   applyPublishedSnapshot(result);
+  for(const game of submitted)if(!state.games.has(gameKey(game)))recordDiscard(game,"Rechazado por validación oficial del servidor o asignado a otro torneo");
   const crossLeagueRejected=Number(result.refresh?.crossLeagueRejected||0);
   if(crossLeagueRejected)warn(`${crossLeagueRejected} partido${crossLeagueRejected===1?"":"s"} ya pertenec${crossLeagueRejected===1?"e":"en"} a otro torneo y no se ${crossLeagueRejected===1?"agregó":"agregaron"}.`);
   if(rejected-crossLeagueRejected>0)warn(`${rejected-crossLeagueRejected} partidos candidatos no superaron la validación oficial del servidor.`);
@@ -437,25 +442,27 @@ function gameBelongsToParticipantLeague(game,p){
 }
 
 function canonicalCandidate(row,p,roster){
-  if(!isLeagueRow(row)||!isOnOrAfterStartDate(row.display_date,state.config.startDate))return null;
+  if(!isLeagueRow(row))return null;
+  const reject=reason=>{recordDiscard({...normalizeForParticipant(row,p),sourceUser:p.username,sourcePlatform:"psn",phase:activePhase()},reason);return null;};
+  if(!isOnOrAfterStartDate(row.display_date,state.config.startDate))return reject("Anterior a la fecha inicial o fecha no válida");
   if(activePhase()==="postseason"){
     const played=parseShowDate(row.display_date),closed=new Date(state.config.regularSeason?.closedAt||0);
-    if(!played||played.getTime()<=closed.getTime()||!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,p.username)))return null;
+    if(!played||played.getTime()<=closed.getTime()||!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,p.username)))return reject("Fuera de la fase de postemporada");
   }
   const game=normalizeForParticipant(row,p);
-  if(!gameBelongsToParticipantLeague(game,p))return null;
+  if(!gameBelongsToParticipantLeague(game,p))return reject("Equipo del participante distinto al configurado");
   const opponent=opponentFromGame(game,p.username,p.team);
-  if(!opponent?.user||isCpuName(opponent.user))return null;
+  if(!opponent?.user||isCpuName(opponent.user))return reject("Rival no identificado o CPU");
   const opponentMember=verifiedRosterMemberForOpponent(opponent.user,opponent.team,roster);
-  if(!opponentMember||!sameText(opponentMember.team,opponent.team))return null;
-  if(activePhase()==="postseason"&&!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,opponentMember.username)))return null;
+  if(!opponentMember||!sameText(opponentMember.team,opponent.team))return reject("Rival o equipo fuera del roster");
+  if(activePhase()==="postseason"&&!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,opponentMember.username)))return reject("Rival no clasificado a postemporada");
   if(game.querySide==="home"){
     game.homeUser=p.username;
     game.awayUser=opponentMember.username;
   }else if(game.querySide==="away"){
     game.awayUser=p.username;
     game.homeUser=opponentMember.username;
-  }else return null;
+  }else return reject("No se pudo identificar local y visitante");
   return {
     game,
     record:{id:game.id,username:p.username,platform:"psn"}
@@ -492,6 +499,80 @@ function mergeApiRecords(existing,records){
     if(!merged.some(item=>item.id===record.id&&sameText(item.username,record.username)))merged.push(record);
   }
   return merged;
+}
+
+let updateReview=null;
+function recordDiscard(game,reason,canInclude=true){
+  if(!updateReview)return;
+  const key=gameFingerprint(game)||gameKey(game);
+  if(!updateReview.discarded.has(key))updateReview.discarded.set(key,{game,reason,canInclude});
+}
+function showUpdateReview(){
+  if(!updateReview)return;
+  const accepted=new Set([...state.games.values()].map(gameFingerprint));
+  const rejected=[...updateReview.discarded.entries()].filter(([,item])=>!state.games.has(gameKey(item.game))&&!accepted.has(gameFingerprint(item.game)));
+  const label=game=>`${excludedGameLabel(game)} · ${game.awayTeam||"?"} @ ${game.homeTeam||"?"} · ID ${game.id}`;
+  $("#updateReviewStatus").textContent=updateReview.complete?"Actualización guardada. La inclusión manual requiere la clave administrativa y solo admite juegos LEAGUE.":`Actualización incompleta: ${updateReview.error||"no se guardaron los cambios"}`;
+  $("#updateAdded").innerHTML=`<h3>Nuevos juegos agregados (${updateReview.added.length})</h3>`+(updateReview.added.length?updateReview.added.map(game=>`<p class="review-game">${esc(label(game))}</p>`).join(""):"<p>No se agregaron juegos nuevos.</p>");
+  $("#updateDiscarded").innerHTML=`<h3>Juegos descartados (${rejected.length})</h3>`+(rejected.length?rejected.map(([key,item])=>`<article class="review-game"><p>${esc(label(item.game))}</p><p>${esc(item.reason)}</p>${item.canInclude&&updateReview.complete?`<button type="button" class="btn" data-include-game="${esc(key)}">Incluir juego</button>`:""}</article>`).join(""):"<p>No hubo juegos descartados.</p>");
+  if(!$("#updateReviewDialog").open)$("#updateReviewDialog").showModal();
+}
+async function includeDiscardedGame(key){
+  const item=updateReview?.discarded.get(key);if(!item?.canInclude||!updateReview.complete)return;
+  if(state.config.finalizedAt)throw new Error("El torneo está finalizado.");
+  const token=window.prompt("Clave privada para incluir y publicar este juego descartado:");if(!token)return;
+  const previous=structuredClone(publicSnapshot());
+  const latest=await fetchJson(leagueApiUrl());
+  if(latest.publishedAt!==state.publishedAt)throw new Error("La liga cambió. Cierra esta ventana y actualiza antes de incluir el juego.");
+  const source=item.game;
+  const payload=await fetchGameLog(source.id,source.sourceUser,"psn"),{lineScore}=gameParts(payload);
+  if(!lineScore||String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")throw new Error("Solo se pueden incluir partidos con Game Log LEAGUE verificado.");
+  const uuid=cleanDisplayName(lineScore.game_uuid);
+  if(!uuid)throw new Error("El Game Log no tiene UUID para evitar duplicados.");
+  const homeScore=Number(lineScore.home_runs),awayScore=Number(lineScore.away_runs);
+  if(!Number.isFinite(homeScore)||!Number.isFinite(awayScore)||homeScore<0||awayScore<0||homeScore===awayScore)throw new Error("El juego debe tener un marcador válido y un ganador.");
+  const game={...source,uuid,dedupKey:`uuid:${uuid}`,homeScore,awayScore,homeResult:homeScore>awayScore?"W":"L",awayResult:awayScore>homeScore?"W":"L",phase:activePhase(),manualInclusion:{reason:item.reason,createdAt:new Date().toISOString()}};
+  const roster=configuredRoster(state.config);
+  for(const side of ["home","away"]){
+    const member=rosterMemberForName(game[`${side}User`],roster);
+    if(!member)throw new Error("Agrega primero al participante faltante en el roster y vuelve a actualizar.");
+    game[`${side}User`]=member.username;
+  }
+  if(state.games.has(gameKey(game)))throw new Error("Este juego ya está incluido.");
+  try{
+    state.games.set(gameKey(game),game);addGameStats(state.stats,game,payload);
+    await publishLeague(token);saveState();render();updateReview.added.push(game);updateReview.discarded.delete(key);showUpdateReview();
+  }catch(error){applyPublishedSnapshot(previous);throw error;}
+}
+
+const statSortDirections={batting:"desc",pitching:"desc"};
+const statColumns={batting:["name","manager","team","g","ab","r","h","doubles","triples","hr","rbi","bb","so","sb","avg","obp","slg","ops"],pitching:["name","manager","team","g","outs","w","l","sv","h","er","bb","so","era","whip","k9"]};
+function defaultSortDirection(field){return ["name","manager","team","era","whip"].includes(field)?"asc":"desc";}
+function sortedStats(stats,type){
+  const field=$("#"+type+"Sort").value;
+  const rows=type==="batting"?battingLeaders(stats,field):pitchingLeaders(stats,field);
+  return sortStatRows(rows,field,statSortDirections[type]);
+}
+function initializeStatSorting(){
+  for(const [type,fields] of Object.entries(statColumns)){
+    const select=$("#"+type+"Sort"),headers=$("#"+type+"Body").closest("table").querySelectorAll("thead th");
+    const update=()=>{
+      fields.forEach((field,index)=>{
+        const th=headers[index+1],active=select.value===field;
+        th.setAttribute("aria-sort",active?(statSortDirections[type]==="asc"?"ascending":"descending"):"none");
+        th.querySelector("span").textContent=active?(statSortDirections[type]==="asc"?" ▲":" ▼"):" ↕";
+      });
+      render();
+    };
+    fields.forEach((field,index)=>{
+      const th=headers[index+1],label=th.textContent;
+      if(![...select.options].some(option=>option.value===field))select.add(new Option(label,field));
+      th.innerHTML=`<button type="button" class="stat-sort" title="Ordenar por ${esc(label)}">${esc(label)}<span aria-hidden="true"></span></button>`;
+      th.querySelector("button").addEventListener("click",()=>{statSortDirections[type]=select.value===field?(statSortDirections[type]==="asc"?"desc":"asc"):defaultSortDirection(field);select.value=field;update();});
+    });
+    select.addEventListener("change",()=>{statSortDirections[type]=defaultSortDirection(select.value);update();});
+    update();
+  }
 }
 
 function excludedGameLabel(game,lineScore){
@@ -542,7 +623,7 @@ async function discoverLeague(){
     render();
   }
 
-  if(!candidateGroups.size)throw new Error("No se encontraron partidos que coincidan con el roster y la fecha inicial.");
+
 
   let checked=0;
   let failedLogs=0;
@@ -569,16 +650,20 @@ async function discoverLeague(){
     }
     const {lineScore}=payload?gameParts(payload):{lineScore:null};
     if(!lineScore){
+      recordDiscard({...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase()},"Game Log no disponible; no se pudo validar el partido");
       failedLogs++;
       continue;
     }
-    if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")continue;
+    const reviewGame={...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase(),apiRecords:candidates.map(candidate=>candidate.record)};
+    if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE"){recordDiscard(reviewGame,"Game Log no corresponde a LEAGUE",false);continue;}
     if(!isFormallyCompletedGame(lineScore,cfg.regulationInnings)){
+      recordDiscard(reviewGame,"Empate, sin decisión W/L o partido interrumpido");
       excludedUnfinished++;
       unfinishedDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ruling ${lineScore.ruling??"?"}, ${lineScore.innings??"?"} entradas`);
       continue;
     }
     if(lineScore&&!isCompatibleWithRegulationInnings(lineScore,cfg.regulationInnings)){
+      recordDiscard(reviewGame,`Entradas incompatibles con la configuración (${lineScore.innings ?? "?"} entradas)`);
       excludedByInnings++;
       inningsDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ${lineScore.innings??"?"} entradas`);
       continue;
@@ -601,7 +686,7 @@ async function discoverLeague(){
       awayResult:cleanDisplayName(lineScore?.away_display_result||usedCandidate.game.awayResult).toUpperCase(),
       ruling:cleanDisplayName(lineScore?.ruling||usedCandidate.game.ruling||"0")
     };
-    if(lineScore&&!bindParticipantIds(game,lineScore))continue;
+    if(lineScore&&!bindParticipantIds(game,lineScore)){recordDiscard(game,"Identidad de participante inconsistente");continue;}
     const existing=state.games.get(dedupKey);
     if(existing)existing.apiRecords=mergeApiRecords(existing.apiRecords,records);
     else state.games.set(dedupKey,game);
@@ -610,7 +695,7 @@ async function discoverLeague(){
   if(failedLogs)warn(`${failedLogs} partidos se omitieron porque Game Log no permitió validar UUID, identidad y entradas.`);
   if(excludedUnfinished)warn(`${excludedUnfinished} partidos se excluyeron porque terminaron empatados, no tienen decisión W/L o fueron interrumpidos antes de ${Math.min(5,cfg.regulationInnings)} entradas: ${unfinishedDetails.join("; ")}.`);
   if(excludedByInnings)warn(`${excludedByInnings} partidos se excluyeron porque no corresponden a una liga de ${cfg.regulationInnings} entradas: ${inningsDetails.join("; ")}.`);
-  if(!state.games.size) throw new Error("No se pudieron validar partidos pertenecientes a la liga configurada.");
+
   state.lastSync=new Date().toISOString();state.dataSeasonKey=nextSeasonKey;saveState();render();
   setStatus(`Liga configurada: ${state.participants.size} participantes y ${state.games.size} partidos LEAGUE únicos.`,"success");
 }
@@ -825,7 +910,7 @@ function render(){
   const finalized=Boolean(state.config.finalizedAt);
   $("#currentLeagueName").textContent=leagueName?`${leagueName} · ${finalized?"Torneo finalizado":"Solo Custom League"}`:"Solo Custom League · Game History + Game Log";
   document.title=leagueName?`${leagueName} — MLB The Show 26`:`MLB The Show 26 — Custom League Manager`;
-  $("#syncBtn").disabled=finalized;$("#statsBtn").disabled=finalized;$("#finishSeasonBtn").disabled=finalized||activePhase()!=="postseason";$("#closeRegularBtn").disabled=finalized||activePhase()!=="regular";$("#correctionBtn").disabled=!state.games.size;
+  $("#syncBtn").disabled=finalized||state.syncing;$("#statsBtn").disabled=finalized||state.syncing;$("#finishSeasonBtn").disabled=finalized||activePhase()!=="postseason";$("#closeRegularBtn").disabled=finalized||activePhase()!=="regular";$("#correctionBtn").disabled=!state.games.size;
   $("#finishSeasonBtn").textContent=finalized?"Torneo finalizado":"Finalizar torneo";
   $("#phaseView").value=phase;$("#phaseView").querySelector('option[value="postseason"]').disabled=!state.config.regularSeason;
   $("#phaseStatus").textContent=finalized?"Torneo finalizado":activePhase()==="postseason"?`${state.config.postseasonQualifiers.length} clasificados · Postemporada activa`:"Ronda regular activa";
@@ -847,10 +932,10 @@ function render(){
     return `<article class="game-card"><div><div><span class="manager">${esc(g.awayUser)}</span> · <strong>${esc(g.awayTeam)}</strong> <span class="muted">@</span> <span class="manager">${esc(g.homeUser)}</span> · <strong>${esc(g.homeTeam)}</strong></div><div class="meta">${esc(g.date||"Fecha no disponible")} · ${g.uuid?`UUID ${esc(g.uuid)}`:`ID ${esc(g.id)} (sin UUID)`}${g.pitcherInfo?` · ${esc(g.pitcherInfo)}`:""}${decision}${g.corrected?` · Corrección: ${esc(g.correctionReason)}`:""}</div></div><div class="score">${g.awayScore??"—"} — ${g.homeScore??"—"}${decidedEarly?"*":""}</div></article>`;
   }).join(""):`<div class="empty">Sin datos.</div>`;
 
-  const bat=filteredStatRows(battingLeaders(stats,$("#battingSort")?.value||"avg"),"batting");
+  const bat=filteredStatRows(sortedStats(stats,"batting"),"batting");
   $("#battingBody").innerHTML=bat.length?bat.map((p,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td><span class="team-pill">${esc(p.team)}</span></td><td>${p.g}</td><td>${p.ab}</td><td>${p.r}</td><td>${p.h}</td><td>${p.doubles}</td><td>${p.triples}</td><td>${p.hr}</td><td>${p.rbi}</td><td>${p.bb}</td><td>${p.so}</td><td>${p.sb}</td><td>${fmt3(p.avg)}</td><td>${fmt3(p.obp)}</td><td>${fmt3(p.slg)}</td><td><strong>${fmt3(p.ops)}</strong></td></tr>`).join(""):`<tr><td colspan="19" class="empty">No hay jugadores que coincidan con los filtros.</td></tr>`;
 
-  const pit=filteredStatRows(pitchingLeaders(stats,$("#pitchingSort")?.value||"so"),"pitching");
+  const pit=filteredStatRows(sortedStats(stats,"pitching"),"pitching");
   $("#pitchingBody").innerHTML=pit.length?pit.map((p,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${esc(p.manager)}</td><td><span class="team-pill">${esc(p.team)}</span></td><td>${p.g}</td><td>${p.ip}</td><td>${p.w}</td><td>${p.l}</td><td>${p.sv}</td><td>${p.h}</td><td>${p.er}</td><td>${p.bb}</td><td>${p.so}</td><td>${p.era.toFixed(2)}</td><td>${p.whip.toFixed(2)}</td><td>${p.k9.toFixed(2)}</td></tr>`).join(""):`<tr><td colspan="16" class="empty">No hay pitchers que coincidan con los filtros.</td></tr>`;
 
   const participants=[...state.participants.values()].sort((a,b)=>a.username.localeCompare(b.username));
@@ -858,7 +943,19 @@ function render(){
 }
 
 $("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();if(!state.games.size)loadConfiguredParticipants();saveConfig();saveState();render();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
-$("#syncBtn").addEventListener("click",async()=>{try{state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;$("#statsBtn").disabled=true;await discoverLeague();await loadStats();await refreshSharedLeague()}catch(e){setStatus(e.message,"error")}finally{render()}});
+$("#syncBtn").addEventListener("click",async()=>{
+  if(state.syncing)return;
+  state.syncing=true;
+  const previous=structuredClone(publicSnapshot());
+  updateReview={before:new Set(state.games.keys()),discarded:new Map(),added:[],complete:false};
+  try{
+    state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;$("#statsBtn").disabled=true;
+    await discoverLeague();if(rawGamesForPhase(activePhase()).length)await loadStats();await refreshSharedLeague();
+    updateReview.added=[...state.games.values()].filter(game=>!updateReview.before.has(gameKey(game)));
+    updateReview.complete=true;
+  }catch(e){applyPublishedSnapshot(previous);setStatus(e.message,"error");updateReview.error=e.message;}
+  finally{state.syncing=false;render();showUpdateReview();}
+});
 $("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{render()}});
 $("#publishBtn").addEventListener("click",async()=>{try{$("#publishBtn").disabled=true;await publishLeague()}catch(e){setStatus(e.message,"error")}finally{$("#publishBtn").disabled=false}});
 $("#closeRegularBtn").addEventListener("click",()=>{try{openCloseRegular()}catch(error){setStatus(error.message,"error")}});
@@ -873,12 +970,19 @@ $("#finishSeasonBtn").addEventListener("click",()=>{try{openFinishSeason()}catch
 $("#finishSeasonForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;try{button.disabled=true;await finishSeason()}catch(error){setStatus(error.message,"error")}finally{button.disabled=false}});
 $("#cancelFinishBtn").addEventListener("click",closeFinishSeason);$("#cancelFinishFooterBtn").addEventListener("click",closeFinishSeason);
 $("#newSeasonBtn").addEventListener("click",()=>{try{startNewSeason()}catch(error){setStatus(error.message,"error")}});
-$("#battingSort").addEventListener("change",render);
-$("#pitchingSort").addEventListener("change",render);
+initializeStatSorting();
 for(const id of ["battingSearch","pitchingSearch"])$("#"+id).addEventListener("input",render);
 for(const id of ["battingManagerFilter","battingTeamFilter","pitchingManagerFilter","pitchingTeamFilter"])$("#"+id).addEventListener("change",render);
 $("#phaseView").addEventListener("change",event=>{state.viewPhase=event.target.value;render()});
 $("#leagueSelector").addEventListener("change",event=>switchActiveLeague(event.target.value));
 document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));btn.classList.add("active");$("#"+btn.dataset.tab).classList.add("active")}));
+
+$("#closeUpdateReview").addEventListener("click",()=>$("#updateReviewDialog").close());
+$("#updateDiscarded").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-include-game]");if(!button)return;
+  const buttons=[...$("#updateDiscarded").querySelectorAll("button")];buttons.forEach(item=>item.disabled=true);
+  try{await includeDiscardedGame(button.dataset.includeGame)}catch(error){$("#updateReviewStatus").textContent=error.message;}
+  finally{buttons.forEach(item=>item.disabled=false);}
+});
 
 loadState();fillForm();render();loadLeagueIndex();

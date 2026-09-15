@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=4.2.1" />
+  <link rel="stylesheet" href="styles.css?v=4.3.0" />
 </head>
 <body>
   <header class="topbar">
@@ -158,6 +158,13 @@
     </section>
   </main>
 
+  <dialog id="updateReviewDialog" class="season-dialog update-review" aria-labelledby="updateReviewTitle">
+    <div class="dialog-head"><h2 id="updateReviewTitle">Resumen de actualización</h2><button id="closeUpdateReview" class="dialog-close" type="button" aria-label="Cerrar">×</button></div>
+    <p id="updateReviewStatus" role="status"></p>
+    <section id="updateAdded"></section>
+    <section id="updateDiscarded"></section>
+  </dialog>
+
   <dialog id="finishSeasonDialog" class="season-dialog">
     <form id="finishSeasonForm" class="form">
       <div class="dialog-head"><div><span>Cierre oficial</span><h2>Finalizar torneo</h2></div><button id="cancelFinishBtn" class="dialog-close" type="button" aria-label="Cerrar">×</button></div>
@@ -198,6 +205,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.2.4"></script>
+  <script type="module" src="app.js?v=4.3.0"></script>
 </body>
 </html>
