@@ -39,6 +39,24 @@ export function regularSchedule(participants, games, gamesPerOpponent) {
   return {pairs,teams,scheduled:pairs.length*gamesPerOpponent,remaining:pairs.reduce((sum,pair)=>sum+pair.remaining,0)};
 }
 
+// Assign each pending pairing once, starting with the busiest participant.
+export function pendingMatchupGroups(schedule) {
+  let pending=schedule.pairs.filter(pair=>pair.remaining>0);
+  const groups=[];
+  while(pending.length){
+    const candidates=schedule.teams.map(team=>({...team,remaining:pending.reduce((sum,pair)=>sum+(sameText(pair.a.username,team.username)||sameText(pair.b.username,team.username)?pair.remaining:0),0)}))
+      .sort((a,b)=>b.remaining-a.remaining||a.username.localeCompare(b.username));
+    const team=candidates[0];
+    const matches=pending.filter(pair=>sameText(pair.a.username,team.username)||sameText(pair.b.username,team.username));
+    const opponents=matches.map(pair=>({participant:sameText(pair.a.username,team.username)?pair.b:pair.a,remaining:pair.remaining}))
+      .sort((a,b)=>a.participant.username.localeCompare(b.participant.username));
+    groups.push({team,opponents});
+    const assigned=new Set(matches);
+    pending=pending.filter(pair=>!assigned.has(pair));
+  }
+  return groups;
+}
+
 // Standard seeded bracket: 1–4 / 2–3, or 1–8 / 4–5 / 2–7 / 3–6.
 export function postseasonSchedule(qualifiers, games, format) {
   if (qualifiers.length!==format.qualifierCount) return [];

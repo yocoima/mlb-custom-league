@@ -317,7 +317,9 @@ test("publica el formato del torneo y rechaza cantidades invalidas",async()=>{
   const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"},data=snapshot();
   data.config.tournamentFormat={gamesPerOpponent:3,qualifierCount:2,postseasonBestOf:3,finalBestOf:7};
   const publish=()=>worker.fetch(new Request("https://worker.example/api/league",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
-  assert.equal((await publish()).status,200);
+  const published=await publish();
+  assert.equal(published.status,200);
+  assert.deepEqual((await published.json()).tournamentFormat,data.config.tournamentFormat);
   const saved=await(await worker.fetch(new Request("https://worker.example/api/league"),env)).json();
   assert.deepEqual(saved.config.tournamentFormat,data.config.tournamentFormat);
   data.config.tournamentFormat.qualifierCount=4;

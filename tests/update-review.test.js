@@ -32,6 +32,22 @@ function appContext() {
   return { context, elements, run: code => vm.runInContext(code, context) };
 }
 
+test("publication warns when an older Worker drops the tournament format",async()=>{
+  const {run,context,elements}=appContext();
+  run(`
+    state.config.tournamentFormat={gamesPerOpponent:1,qualifierCount:2,postseasonBestOf:3,finalBestOf:3};
+    updateLeagueSelector=()=>{};loadChampionHall=async()=>{};renderWarnings=()=>{};
+  `);
+  context.fetch=async()=>({ok:true,json:async()=>({publishedAt:"new",participants:2,games:0})});
+  const result=await run('publishLeague("token")');
+  assert.equal(result.formatSaved,false);
+  assert.match(elements.get("#status").textContent,/no confirmó el formato/);
+  assert.equal(run("state.config.tournamentFormat.qualifierCount"),2);
+  context.fetch=async()=>({ok:true,json:async()=>({publishedAt:"newer",participants:2,games:0,tournamentFormat:{gamesPerOpponent:1,qualifierCount:2,postseasonBestOf:3,finalBestOf:3}})});
+  await run('publishLeague("token")');
+  assert.match(elements.get("#status").textContent,/Liga publicada/);
+});
+
 test("stat columns sort numerically both ways without mutating rows", () => {
   const rows = [{name:"A", ab:9, hr:12, outs:29}, {name:"B", ab:100, hr:2, outs:31}];
   assert.deepEqual(sortStatRows(rows,"ab").map(p=>p.name), ["B","A"]);

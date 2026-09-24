@@ -1,9 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tournamentFormat, regularSchedule, postseasonSchedule } from "../src/tournament-format.js";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingMatchupGroups } from "../src/tournament-format.js";
 
 const format={gamesPerOpponent:2,qualifierCount:4,postseasonBestOf:3,finalBestOf:5};
 const participants=["A","B","C","D"].map(username=>({username,team:"Dodgers"}));
+test("pending groups show the busiest team first without repeating a pairing",()=>{
+  const people=["Gaboandres20","tributo-cano","BoweMio","Angelotti0611","daddy_champagnee"].map(username=>({username,team:"Dodgers"}));
+  const schedule=regularSchedule(people,[],1);
+  for(const pair of schedule.pairs)pair.remaining=0;
+  for(const [a,b] of [[0,1],[0,2],[3,4]])schedule.pairs.find(pair=>pair.a===people[a]&&pair.b===people[b]).remaining=1;
+  const groups=pendingMatchupGroups(schedule);
+  assert.deepEqual(groups.map(group=>[group.team.username,group.team.remaining]),[["Gaboandres20",2],["Angelotti0611",1]]);
+  assert.deepEqual(groups[0].opponents.map(item=>item.participant.username),["BoweMio","tributo-cano"]);
+  assert.equal(groups.reduce((sum,group)=>sum+group.opponents.length,0),3);
+  for(const pair of schedule.pairs)pair.remaining=0;
+  assert.deepEqual(pendingMatchupGroups(schedule),[]);
+});
 function game(id,homeUser,awayUser,homeScore=2,awayScore=1){
   return {id,uuid:String(id),homeUser,awayUser,homeScore,awayScore,date:`2026-09-${String(id).padStart(2,"0")}T12:00:00Z`};
 }

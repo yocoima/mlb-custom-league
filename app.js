@@ -26,7 +26,7 @@ import {
 } from "./src/league-core.js?v=4.2.4";
 
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
-import { tournamentFormat, regularSchedule, postseasonSchedule } from "./src/tournament-format.js?v=4.4.0";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingMatchupGroups } from "./src/tournament-format.js?v=4.4.2";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -287,6 +287,11 @@ async function publishLeague(providedToken=""){
   const index=state.leagues.findIndex(entry=>entry.id===state.activeLeagueId);if(index>=0)state.leagues[index]=summary;else state.leagues.unshift(summary);updateLeagueSelector();
   saveState();
   await loadChampionHall();
+  if(JSON.stringify(tournamentFormat(state.config.tournamentFormat))!==JSON.stringify(tournamentFormat(result.tournamentFormat))){
+    const message="El servidor recibió la publicación, pero no confirmó el formato del torneo. Actualiza el Cloudflare Worker y vuelve a publicar; el formato sigue guardado en este navegador.";
+    warn(message);setStatus(message,"error");
+    return {...result,formatSaved:false};
+  }
   setStatus(`Liga publicada: ${result.participants} participantes y ${result.games} partidos.`,"success");
   return result;
 }
@@ -960,11 +965,11 @@ function renderSchedule(){
   const schedule=regularSchedule(participants,correctedGamesForPhase("regular"),format.gamesPerOpponent);
   const name=p=>`${esc(p.username)} · ${esc(p.team||"")}`;
   const teamRows=schedule.teams.map(p=>`<tr><td>${name(p)}</td><td>${p.played} / ${p.scheduled}</td><td>${p.remaining}</td></tr>`).join("");
-  const pairs=schedule.pairs.filter(pair=>pair.remaining>0).map(pair=>`<article class="game-card"><div>${name(pair.a)}<br>${name(pair.b)}</div><div>${pair.played} / ${pair.scheduled} jugados · <strong>${pair.remaining} pendientes</strong></div></article>`).join("")||'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
+  const pairs=pendingMatchupGroups(schedule).map(({team,opponents})=>`<article class="game-card"><div><strong>${name(team)} · ${team.remaining} ${team.remaining===1?"pendiente":"pendientes"}</strong><ul>${opponents.map(({participant,remaining})=>`<li>${name(participant)}${remaining>1?` · ${remaining} juegos`:""}</li>`).join("")}</ul></div></article>`).join("")||'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
   const rounds=postseasonSchedule(state.config.postseasonQualifiers||[],correctedGamesForPhase("postseason"),format);
   const playoffs=rounds.length?rounds.map(round=>`<h3>${round.name}</h3><div class="game-list">${round.series.map(match=>`<article class="game-card"><div>${esc(match.a.username||match.a.label)}<br>${esc(match.b.username||match.b.label)}<div class="meta">Al mejor de ${match.bestOf} · gana con ${match.needed} victorias</div></div><div><strong>${match.wins.join(" – ")}</strong><div class="meta">${match.winner?`Ganador: ${esc(match.winner)}`:!match.a.username||!match.b.username?"Cruce por definir":`${match.remaining} juegos mínimos pendientes · hasta ${match.possible}`}</div></div></article>`).join("")}</div>`).join(""):
     `<p>Los cruces se generan al cerrar la ronda regular, según la posición de los clasificados. Postemporada al mejor de ${format.postseasonBestOf}; final al mejor de ${format.finalBestOf}.</p>`;
-  $("#scheduleContent").innerHTML=`<h3>Ronda regular</h3><p>${schedule.scheduled} juegos programados · ${schedule.remaining} pendientes</p><details><summary>Resumen de juegos por participante</summary><div class="table-wrap schedule-table"><table><thead><tr><th>Participante</th><th>Jugados / previstos</th><th>Pendientes</th></tr></thead><tbody>${teamRows}</tbody></table></div></details><details open><summary>Pendientes entre cada pareja de equipos</summary><div class="game-list">${pairs}</div></details><h3>Postemporada y final</h3>${playoffs}`;
+  $("#scheduleContent").innerHTML=`<h3>Ronda regular</h3><p>${schedule.scheduled} juegos programados · ${schedule.remaining} pendientes</p><details><summary>Resumen de juegos por participante</summary><div class="table-wrap schedule-table"><table><thead><tr><th>Participante</th><th>Jugados / previstos</th><th>Pendientes</th></tr></thead><tbody>${teamRows}</tbody></table></div></details><details open><summary>Pendientes por equipo</summary><p>Cada cruce aparece una sola vez, agrupado primero bajo el equipo con m?s juegos pendientes.</p><div class="game-list">${pairs}</div></details><h3>Postemporada y final</h3>${playoffs}`;
 }
 
 function render(){
