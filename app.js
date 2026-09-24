@@ -295,15 +295,16 @@ async function refreshSharedLeague(){
   }
   const added=Number(result.refresh?.added||0),rejected=Number(result.refresh?.rejected||0);
   applyPublishedSnapshot(result);
-  for(const game of submitted)if(!state.games.has(gameKey(game)))recordDiscard(game,"Rechazado por validación oficial del servidor o asignado a otro torneo");
+  for(const game of submitted)if(!state.games.has(gameKey(game)))recordDiscard(game,"Rechazado por validación oficial del servidor o asignado a otro torneo",true,true);
   const crossLeagueRejected=Number(result.refresh?.crossLeagueRejected||0);
   if(crossLeagueRejected)warn(`${crossLeagueRejected} partido${crossLeagueRejected===1?"":"s"} ya pertenec${crossLeagueRejected===1?"e":"en"} a otro torneo y no se ${crossLeagueRejected===1?"agregó":"agregaron"}.`);
   if(rejected-crossLeagueRejected>0)warn(`${rejected-crossLeagueRejected} partidos candidatos no superaron la validación oficial del servidor.`);
   setStatus(added?`Liga pública actualizada: ${added} partido${added===1?"":"s"} nuevo${added===1?"":"s"} y estadísticas recalculadas.`:"La liga pública ya estaba al día.","success");
 }
 
-async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}) {
+async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}, since = 0) {
   const rows = [];
+  rows.complete=false;
   let totalPages = maxPages;
 
   for (let page = 1; page <= Math.min(totalPages, maxPages); page++) {
@@ -323,10 +324,13 @@ async function fetchAllHistory(username, platform, maxPages, onProgress = () => 
 
     onProgress(page, totalPages, rows.length, leagueFound);
 
-    if (!pageRows.length) {
+    if (!pageRows.length || page >= Number(payload?.total_pages) || pageRows.every(row=>{
+      const date=parseShowDate(row?.display_date);
+      return date && (since ? date.getTime()<since : !isOnOrAfterStartDate(row.display_date,state.config.startDate));
+    })) {
+      rows.complete=true;
       break;
     }
-    if(pageRows.every(row=>!isOnOrAfterStartDate(row?.display_date,state.config.startDate)))break;
   }
 
   return rows;
@@ -502,9 +506,31 @@ function mergeApiRecords(existing,records){
 }
 
 let updateReview=null;
-function recordDiscard(game,reason,canInclude=true){
+let scanSession=null;
+const SCAN_OVERLAP_MS=48*60*60*1000;
+function scanStorageKey(){
+  return "mlb26_scan_v1:"+JSON.stringify([state.activeLeagueId,seasonConfigKey(state.config),activePhase(),state.config.regularSeason?.closedAt||null,state.config.postseasonQualifiers||[]]);
+}
+function beginScan(full=false){
+  const key=scanStorageKey();
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(key)||"{}")||{};}catch{}
+  if(full)for(const participant of Object.values(saved.participants||{}))participant.completedAt=0;
+  scanSession={key,full,startedAt:Date.now(),participants:saved.participants||{},discarded:full?{}:(saved.discarded||{})};
+}
+function finishCandidates(candidates){
+  if(!scanSession)return;
+  for(const {record} of candidates){
+    const participant=scanSession.participants[participantKey(record.username)];
+    if(participant)delete participant.pending[String(record.id)];
+  }
+}
+function recordDiscard(game,reason,canInclude=true,retry=false){
   if(!updateReview)return;
   const key=gameFingerprint(game)||gameKey(game);
+  const previous=scanSession?.discarded[key];
+  if(scanSession)scanSession.discarded[key]={reason,retry};
+  if(previous?.reason===reason)return;
   if(!updateReview.discarded.has(key))updateReview.discarded.set(key,{game,reason,canInclude});
 }
 function showUpdateReview(){
@@ -605,17 +631,26 @@ async function discoverLeague(){
   for(const participant of historyParticipants){
     setStatus(`Leyendo historial de ${participant.username} (${participant.team})…`);
     let rows=[];
+    const scan=scanSession ? (scanSession.participants[participantKey(participant.username)] ||= {completedAt:0,pending:{}}) : null;
+    const since=scan?.completedAt ? scan.completedAt-SCAN_OVERLAP_MS : 0;
     try{
       rows=await fetchAllHistory(participant.username,"psn",cfg.maxPages,(page,total,downloaded,leagueFound)=>{
         setStatus(`${participant.username}: página ${page}/${total} · ${downloaded} juegos revisados · ${leagueFound} LEAGUE encontrados`);
-      });
+      },since);
+      if(scan && rows.complete)scan.completedAt=scanSession.startedAt;
+      if(!rows.complete)warn(`Historial de ${participant.username} limitado por el máximo de páginas; no se avanzó su punto de escaneo.`);
     }catch(error){
       warn(`No pude leer el historial de ${participant.username} (psn): ${error.message}`);
       continue;
     }
-    for(const row of rows){
+    const recent=rows.filter(row=>!since || !parseShowDate(row.display_date) || parseShowDate(row.display_date).getTime()>=since);
+    const toReview=new Map([...Object.values(scan?.pending||{}),...recent].map(row=>[String(row.id),row]));
+    for(const row of toReview.values()){
       const candidate=canonicalCandidate(row,participant,roster);
-      if(!candidate)continue;
+      if(!candidate){if(scan)delete scan.pending[String(row.id)];continue;}
+      const previous=scanSession?.discarded[gameFingerprint(candidate.game)];
+      if(previous && !previous.retry){if(scan)delete scan.pending[String(row.id)];continue;}
+      if(scan)scan.pending[String(row.id)]=row;
       const fingerprint=gameFingerprint(candidate.game);
       if(!candidateGroups.has(fingerprint))candidateGroups.set(fingerprint,[]);
       candidateGroups.get(fingerprint).push(candidate);
@@ -635,6 +670,7 @@ async function discoverLeague(){
     checked++;
     const knownGame=candidates.map(candidate=>existingByRecord.get(`${candidate.record.id}|${participantKey(candidate.record.username)}`)).find(Boolean)||existingByFingerprint.get(fingerprint);
     if(knownGame){
+      finishCandidates(candidates);
       knownGame.apiRecords=mergeApiRecords(knownGame.apiRecords,candidates.map(candidate=>candidate.record));
       continue;
     }
@@ -650,14 +686,14 @@ async function discoverLeague(){
     }
     const {lineScore}=payload?gameParts(payload):{lineScore:null};
     if(!lineScore){
-      recordDiscard({...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase()},"Game Log no disponible; no se pudo validar el partido");
+      recordDiscard({...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase()},"Game Log no disponible; no se pudo validar el partido",true,true);
       failedLogs++;
       continue;
     }
     const reviewGame={...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase(),apiRecords:candidates.map(candidate=>candidate.record)};
-    if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE"){recordDiscard(reviewGame,"Game Log no corresponde a LEAGUE",false);continue;}
+    if(lineScore&&String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE"){recordDiscard(reviewGame,"Game Log no corresponde a LEAGUE",false);finishCandidates(candidates);continue;}
     if(!isFormallyCompletedGame(lineScore,cfg.regulationInnings)){
-      recordDiscard(reviewGame,"Empate, sin decisión W/L o partido interrumpido");
+      recordDiscard(reviewGame,"Empate, sin decisión W/L o partido interrumpido",true,true);
       excludedUnfinished++;
       unfinishedDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ruling ${lineScore.ruling??"?"}, ${lineScore.innings??"?"} entradas`);
       continue;
@@ -665,6 +701,7 @@ async function discoverLeague(){
     if(lineScore&&!isCompatibleWithRegulationInnings(lineScore,cfg.regulationInnings)){
       recordDiscard(reviewGame,`Entradas incompatibles con la configuración (${lineScore.innings ?? "?"} entradas)`);
       excludedByInnings++;
+      finishCandidates(candidates);
       inningsDetails.push(`${excludedGameLabel(usedCandidate.game,lineScore)}, ${lineScore.innings??"?"} entradas`);
       continue;
     }
@@ -682,11 +719,13 @@ async function discoverLeague(){
       sourcePlatform:"psn",
       homePlayerId:lineScore?.home_player_id?String(lineScore.home_player_id):null,
       awayPlayerId:lineScore?.away_player_id?String(lineScore.away_player_id):null,
+      homeScore:lineScore?.home_runs!=null?Number(lineScore.home_runs):usedCandidate.game.homeScore,
+      awayScore:lineScore?.away_runs!=null?Number(lineScore.away_runs):usedCandidate.game.awayScore,
       homeResult:cleanDisplayName(lineScore?.home_display_result||usedCandidate.game.homeResult).toUpperCase(),
       awayResult:cleanDisplayName(lineScore?.away_display_result||usedCandidate.game.awayResult).toUpperCase(),
       ruling:cleanDisplayName(lineScore?.ruling||usedCandidate.game.ruling||"0")
     };
-    if(lineScore&&!bindParticipantIds(game,lineScore)){recordDiscard(game,"Identidad de participante inconsistente");continue;}
+    if(lineScore&&!bindParticipantIds(game,lineScore)){recordDiscard(game,"Identidad de participante inconsistente",true,true);continue;}
     const existing=state.games.get(dedupKey);
     if(existing)existing.apiRecords=mergeApiRecords(existing.apiRecords,records);
     else state.games.set(dedupKey,game);
@@ -910,7 +949,7 @@ function render(){
   const finalized=Boolean(state.config.finalizedAt);
   $("#currentLeagueName").textContent=leagueName?`${leagueName} · ${finalized?"Torneo finalizado":"Solo Custom League"}`:"Solo Custom League · Game History + Game Log";
   document.title=leagueName?`${leagueName} — MLB The Show 26`:`MLB The Show 26 — Custom League Manager`;
-  $("#syncBtn").disabled=finalized||state.syncing;$("#statsBtn").disabled=finalized||state.syncing;$("#finishSeasonBtn").disabled=finalized||activePhase()!=="postseason";$("#closeRegularBtn").disabled=finalized||activePhase()!=="regular";$("#correctionBtn").disabled=!state.games.size;
+  $("#syncBtn").disabled=finalized||state.syncing;$("#fullScanBtn").disabled=finalized||state.syncing;$("#statsBtn").disabled=finalized||state.syncing;$("#finishSeasonBtn").disabled=finalized||activePhase()!=="postseason";$("#closeRegularBtn").disabled=finalized||activePhase()!=="regular";$("#correctionBtn").disabled=!state.games.size;
   $("#finishSeasonBtn").textContent=finalized?"Torneo finalizado":"Finalizar torneo";
   $("#phaseView").value=phase;$("#phaseView").querySelector('option[value="postseason"]').disabled=!state.config.regularSeason;
   $("#phaseStatus").textContent=finalized?"Torneo finalizado":activePhase()==="postseason"?`${state.config.postseasonQualifiers.length} clasificados · Postemporada activa`:"Ronda regular activa";
@@ -942,20 +981,25 @@ function render(){
   $("#participantsBody").innerHTML=participants.length?participants.map(p=>`<tr><td><strong>${esc(p.username)}</strong></td><td><span class="team-pill">${esc(p.team)}</span></td><td><span class="status-pill ${p.playerId?"ok":"warn"}">${p.playerId?`verificado · ID ${esc(p.playerId)}`:"configurado · sin juegos"}</span></td><td>${esc(p.discoveredBy||"Roster configurado")}</td></tr>`).join(""):`<tr><td colspan="4" class="empty">Sin datos.</td></tr>`;
 }
 
-$("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();if(!state.games.size)loadConfiguredParticipants();saveConfig();saveState();render();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
-$("#syncBtn").addEventListener("click",async()=>{
+async function syncLeague(full=false){
   if(state.syncing)return;
   state.syncing=true;
   const previous=structuredClone(publicSnapshot());
   updateReview={before:new Set(state.games.keys()),discarded:new Map(),added:[],complete:false};
   try{
-    state.config=formToConfig();saveConfig();$("#syncBtn").disabled=true;$("#statsBtn").disabled=true;
+    state.config=formToConfig();saveConfig();beginScan(full);$("#syncBtn").disabled=true;$("#fullScanBtn").disabled=true;$("#statsBtn").disabled=true;
     await discoverLeague();if(rawGamesForPhase(activePhase()).length)await loadStats();await refreshSharedLeague();
     updateReview.added=[...state.games.values()].filter(game=>!updateReview.before.has(gameKey(game)));
+    for(const game of state.games.values())finishCandidates((game.apiRecords||[]).map(record=>({record})));
+    localStorage.setItem(scanSession.key,JSON.stringify({participants:scanSession.participants,discarded:scanSession.discarded}));
     updateReview.complete=true;
   }catch(e){applyPublishedSnapshot(previous);setStatus(e.message,"error");updateReview.error=e.message;}
-  finally{state.syncing=false;render();showUpdateReview();}
-});
+  finally{scanSession=null;state.syncing=false;$("#fullScanBtn").disabled=false;render();showUpdateReview();}
+}
+
+$("#settingsForm").addEventListener("submit",e=>{e.preventDefault();try{state.config=formToConfig();if(!state.games.size)loadConfiguredParticipants();saveConfig();saveState();render();setStatus("Configuración guardada.","success")}catch(err){setStatus(err.message,"error")}});
+$("#syncBtn").addEventListener("click",()=>syncLeague());
+$("#fullScanBtn").addEventListener("click",()=>syncLeague(true));
 $("#statsBtn").addEventListener("click",async()=>{try{$("#statsBtn").disabled=true;await loadStats()}catch(e){setStatus(e.message,"error")}finally{render()}});
 $("#publishBtn").addEventListener("click",async()=>{try{$("#publishBtn").disabled=true;await publishLeague()}catch(e){setStatus(e.message,"error")}finally{$("#publishBtn").disabled=false}});
 $("#closeRegularBtn").addEventListener("click",()=>{try{openCloseRegular()}catch(error){setStatus(error.message,"error")}});
