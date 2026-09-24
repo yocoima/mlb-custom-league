@@ -55,6 +55,26 @@ test("standings calcula W/L, carreras y diferencial",()=>{
   assert.equal(s[0].homeGp,1); assert.equal(s[0].awayGp,1);
 });
 
+test("standings prioriza PCT, carreras anotadas y luego menos permitidas",()=>{
+  const games=[
+    {homeUser:"A",awayUser:"B",homeScore:10,awayScore:9},
+    {homeUser:"B",awayUser:"A",homeScore:2,awayScore:0},
+    {homeUser:"C",awayUser:"D",homeScore:6,awayScore:0},
+    {homeUser:"D",awayUser:"C",homeScore:5,awayScore:4},
+    {homeUser:"E",awayUser:"F",homeScore:1,awayScore:0}
+  ];
+  const standings=calculateStandings(games);
+  assert.deepEqual(standings.map(row=>row.user),["E","B","C","A","D","F"]);
+  const byUser=Object.fromEntries(standings.map(row=>[row.user,row]));
+  // B supera a C por RF aunque C tenga mejor diferencial.
+  assert.ok(byUser.B.rf>byUser.C.rf);
+  assert.ok(byUser.B.diff<byUser.C.diff);
+  // C y A empatan en PCT y RF: C queda primero por permitir menos carreras.
+  assert.equal(byUser.C.pct,byUser.A.pct);
+  assert.equal(byUser.C.rf,byUser.A.rf);
+  assert.ok(byUser.C.ra<byUser.A.ra);
+});
+
 test("standings no separa un usuario solo por mayúsculas",()=>{
   const games=[
     {homeUser:"Yermain10",awayUser:"B",homeTeam:"Brewers",awayTeam:"Red Sox",homeScore:5,awayScore:3,dateValue:new Date("2026-01-01")},

@@ -211,7 +211,7 @@ export function calculateStandings(games, participants = []) {
     pct: row.gp ? row.w / row.gp : 0,
     diff: row.rf - row.ra,
     form: row.form.slice(-5)
-  })).sort((a, b) => b.pct - a.pct || b.diff - a.diff || b.rf - a.rf || a.user.localeCompare(b.user));
+  })).sort((a, b) => b.pct - a.pct || b.rf - a.rf || a.ra - b.ra || a.user.localeCompare(b.user));
 }
 
 export function gameParts(payload) {
