@@ -26,3 +26,5 @@ footer{text-align:center;color:#64748b;padding:26px;font-size:11px}
 }
 
 .stat-sort{font:inherit;color:inherit;border:0;background:transparent;cursor:pointer;padding:6px 0;white-space:nowrap}.stat-sort:hover,.stat-sort:focus-visible{color:#60a5fa}.stat-sort span{font-size:10px}.update-review{padding:22px;width:min(900px,calc(100% - 24px))}.review-game{padding:12px 0;border-bottom:1px solid #263248}.review-game .btn{margin-top:8px}
+
+.format-settings{border:1px solid #334155;border-radius:10px;padding:14px;display:grid;gap:14px}.form .format-toggle{display:flex;align-items:center;gap:8px}.format-toggle input{width:auto}.schedule-table{margin:14px 0}.schedule-table table{min-width:0}#scheduleContent details{margin:18px 0}#scheduleContent summary{cursor:pointer;margin-bottom:12px}

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import * as format from "../src/tournament-format.js";
 import * as core from "../src/league-core.js";
 import { sortStatRows } from "../src/update-review.js";
 
@@ -9,7 +10,7 @@ function appContext() {
   const elements = new Map();
   const storage = new Map();
   const context = vm.createContext({
-    ...core, sortStatRows, URLSearchParams, structuredClone,
+    ...core, ...format, sortStatRows, URLSearchParams, structuredClone,
     location: { search: "" },
     localStorage: { getItem: key => storage.get(key)||null, setItem(key,value) {storage.set(key,value);} },
     document: { querySelector(selector) {
@@ -234,4 +235,24 @@ test("incremental scan discovers new games and capped histories do not advance",
   assert.equal(run('state.games.has("uuid:new")'),true);
   assert.equal(run("state.games.size"),1);
   assert.equal(run("scanSession.participants.home.completedAt"),checkpoint);
+});
+
+
+test("pending view works before scanning and respects excluded games",()=>{
+  const {run,elements}=appContext();
+  run('state.config.tournamentFormat={gamesPerOpponent:2,qualifierCount:2,postseasonBestOf:3,finalBestOf:5};renderSchedule();');
+  assert.match(elements.get("#formatSummary").textContent,/2 participantes/);
+  assert.match(elements.get("#scheduleContent").innerHTML,/2 juegos programados . 2 pendientes/);
+  run('state.games.set("one",{id:"one",homeUser:"home",awayUser:"away",homeScore:2,awayScore:1,phase:"regular"});renderSchedule();');
+  assert.match(elements.get("#scheduleContent").innerHTML,/2 juegos programados . 1 pendientes/);
+  run('state.config.corrections=[{phase:"regular",type:"exclude",gameKey:"one"}];renderSchedule();');
+  assert.match(elements.get("#scheduleContent").innerHTML,/2 juegos programados . 2 pendientes/);
+});
+
+test("closing regular season suggests configured number and rejects another selection",async()=>{
+  const {run,context,elements}=appContext();
+  run('state.config.tournamentFormat={gamesPerOpponent:1,qualifierCount:2,postseasonBestOf:3,finalBestOf:5};state.participants=new Map(["home","away","third","fourth"].map(username=>[username,{username,team:"Tigers"}]));state.games.set("one",{id:"one",homeUser:"home",awayUser:"away",homeScore:2,awayScore:1,phase:"regular"});state.stats.loadedGameIds.add("one");openCloseRegular();');
+  assert.equal((elements.get("#qualifierList").innerHTML.match(/checked/g)||[]).length,2);
+  context.document.querySelectorAll=()=>[{value:"home"},{value:"away"},{value:"third"}];
+  await assert.rejects(run("closeRegularSeason()"),/exactamente 2/);
 });

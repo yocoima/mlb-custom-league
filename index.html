@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=4.3.0" />
+  <link rel="stylesheet" href="styles.css?v=4.4.0" />
 </head>
 <body>
   <header class="topbar">
@@ -61,6 +61,7 @@
       <button class="tab active" data-tab="standings">Posiciones</button>
       <button class="tab" data-tab="leaders">Líderes</button>
       <button class="tab" data-tab="games">Partidos</button>
+      <button class="tab" data-tab="schedule">Pendientes</button>
       <button class="tab" data-tab="batting">Bateo</button>
       <button class="tab" data-tab="pitching">Pitcheo</button>
       <button class="tab" data-tab="champions">Campeones</button>
@@ -84,6 +85,11 @@
     <section id="games" class="panel">
       <div class="panel-head"><div><h2>Partidos</h2><p>Resultados deduplicados por <code>game_uuid</code> de la liga configurada.</p></div></div>
       <div id="gamesList" class="game-list"><div class="empty">Sin datos.</div></div>
+    </section>
+
+    <section id="schedule" class="panel">
+      <div class="panel-head"><div><h2>Calendario y pendientes</h2><p id="formatSummary"></p></div></div>
+      <div id="scheduleContent"></div>
     </section>
 
     <section id="batting" class="panel">
@@ -140,6 +146,17 @@
           <label>Entradas reglamentarias<input id="regulationInnings" type="number" min="1" max="9" value="5" required /></label>
           <label>Máx. páginas por participante<input id="maxPages" type="number" min="1" max="100" value="20" /></label>
         </div>
+        <fieldset class="format-settings"><legend>Formato del torneo</legend>
+          <label class="format-toggle"><input id="formatEnabled" type="checkbox" /> Calcular calendario y juegos pendientes</label>
+          <p>Todos contra todos en ronda regular; eliminación directa por series después. Puedes configurarlo con el torneo ya iniciado. Los participantes se cuentan desde el roster.</p>
+          <div class="two">
+            <label>Juegos contra cada rival (ronda regular)<input id="gamesPerOpponent" type="number" min="1" max="100" value="1" /></label>
+            <label>Participantes que clasifican<select id="qualifierCount"><option>2</option><option selected>4</option><option>8</option><option>16</option><option>32</option><option>64</option></select></label>
+            <label>Postemporada: series al mejor de<input id="postseasonBestOf" type="number" min="1" max="15" step="2" value="3" /></label>
+            <label>Final: serie al mejor de<input id="finalBestOf" type="number" min="1" max="15" step="2" value="5" /></label>
+          </div>
+          <p>Guardar aplica en este navegador. Usa Publicar liga para compartir el formato con los participantes.</p>
+        </fieldset>
         <label>Roster inicial de la liga (JSON: usuario → equipo)
           <textarea id="roster" rows="12" spellcheck="false" required placeholder='{
   "yocoima_herrera": "Tigers",
@@ -206,6 +223,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.3.1"></script>
+  <script type="module" src="app.js?v=4.4.0"></script>
 </body>
 </html>
