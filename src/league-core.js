@@ -47,6 +47,20 @@ export function parseShowDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+export function postseasonDateAllowed(value, regularSeason, games = []) {
+  const played = parseShowDate(value);
+  if (!played) return false;
+  // El cierre administrativo puede ocurrir despues de los primeros juegos de postemporada.
+  const regularDates = games
+    .filter(game => game.phase === "regular")
+    .map(game => parseShowDate(game.date)?.getTime())
+    .filter(Number.isFinite);
+  const boundary = regularDates.length
+    ? Math.max(...regularDates)
+    : new Date(regularSeason?.closedAt || 0).getTime();
+  return played.getTime() > boundary;
+}
+
 export function showDateKey(value) {
   const raw = String(value ?? "").trim();
   const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);

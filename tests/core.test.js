@@ -2,12 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   cleanDisplayName,isLeagueRow,normalizeHistoryGame,opponentFromGame,participantTeamFromGame,
-  showDateKey,isOnOrAfterStartDate,gameFingerprint,
+  showDateKey,isOnOrAfterStartDate,postseasonDateAllowed,gameFingerprint,
   scoreThroughInning,isCompatibleWithRegulationInnings,matchRosterParticipant,
   isFormallyCompletedGame,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards,
   battingQualifies,pitchingQualifies,filterStatLeaders
 } from "../src/league-core.js";
+
+test("postseason uses last regular game when the administrative close was later",()=>{
+  const regularSeason={closedAt:"2026-09-27T14:48:08.770Z"};
+  const games=[{phase:"regular",date:"09/25/2026 21:54:18"}];
+  assert.equal(postseasonDateAllowed("09/27/2026 04:38:54",regularSeason,games),true);
+  assert.equal(postseasonDateAllowed("09/25/2026 21:54:18",regularSeason,games),false);
+  assert.equal(postseasonDateAllowed("09/24/2026 18:56:00",regularSeason,games),false);
+});
 
 test("filtra LEAGUE y limpia códigos de formato",()=>{
   assert.equal(isLeagueRow({game_mode:"LEAGUE"}),true);

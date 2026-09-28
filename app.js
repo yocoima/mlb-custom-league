@@ -7,6 +7,7 @@ import {
   isLeagueRow,
   isOnOrAfterStartDate,
   parseShowDate,
+  postseasonDateAllowed,
   normalizeHistoryGame,
   opponentFromGame,
   participantTeamFromGame,
@@ -23,7 +24,7 @@ import {
   battingQualifies,
   pitchingQualifies,
   tournamentAwards
-} from "./src/league-core.js?v=4.2.4";
+} from "./src/league-core.js?v=4.5.0";
 
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
 import { tournamentFormat, regularSchedule, postseasonSchedule, pendingMatchupGroups } from "./src/tournament-format.js?v=4.4.2";
@@ -462,8 +463,7 @@ function canonicalCandidate(row,p,roster){
   const reject=reason=>{recordDiscard({...normalizeForParticipant(row,p),sourceUser:p.username,sourcePlatform:"psn",phase:activePhase()},reason);return null;};
   if(!isOnOrAfterStartDate(row.display_date,state.config.startDate))return reject("Anterior a la fecha inicial o fecha no válida");
   if(activePhase()==="postseason"){
-    const played=parseShowDate(row.display_date),closed=new Date(state.config.regularSeason?.closedAt||0);
-    if(!played||played.getTime()<=closed.getTime()||!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,p.username)))return reject("Fuera de la fase de postemporada");
+    if(!postseasonDateAllowed(row.display_date,state.config.regularSeason,[...state.games.values()])||!(state.config.postseasonQualifiers||[]).some(username=>sameText(username,p.username)))return reject("Fuera de la fase de postemporada");
   }
   const game=normalizeForParticipant(row,p);
   if(!gameBelongsToParticipantLeague(game,p))return reject("Equipo del participante distinto al configurado");
@@ -521,7 +521,7 @@ let updateReview=null;
 let scanSession=null;
 const SCAN_OVERLAP_MS=48*60*60*1000;
 function scanStorageKey(){
-  return "mlb26_scan_v1:"+JSON.stringify([state.activeLeagueId,seasonConfigKey(state.config),activePhase(),state.config.regularSeason?.closedAt||null,state.config.postseasonQualifiers||[]]);
+  return "mlb26_scan_v2:"+JSON.stringify([state.activeLeagueId,seasonConfigKey(state.config),activePhase(),state.config.regularSeason?.closedAt||null,state.config.postseasonQualifiers||[]]);
 }
 function beginScan(full=false){
   const key=scanStorageKey();

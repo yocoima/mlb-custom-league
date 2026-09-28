@@ -272,6 +272,19 @@ test("refresh rechaza un UUID activo que ya pertenece a otro torneo",async()=>{
   assert.equal(response.status,200);assert.equal(saved.games.length,0);assert.equal(saved.refresh.crossLeagueRejected,1);
 });
 
+test("postseason accepts games after the last regular game when closure was late",async t=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();
+  current.publishedAt="same";current.config.phase="postseason";current.config.postseasonQualifiers=["commissioner","friend"];
+  current.config.regularSeason={closedAt:"2026-09-27T14:48:08.770Z",qualifiers:current.config.postseasonQualifiers,gameKeys:["uuid:one"],stats:current.stats};
+  current.games[0]={...current.games[0],phase:"regular",date:"09/25/2026 21:54:18"};
+  await kv.put("league:copa",JSON.stringify(current));
+  const createdAt="09/27/2026 04:38:54";
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify(postseasonGameLog(createdAt)),{status:200,headers:{"Content-Type":"application/json"}}));
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/copa/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(postseasonCandidate(current,{createdAt}))}),env);
+  const saved=await response.json();
+  assert.equal(response.status,200);assert.equal(saved.refresh.added,1);assert.equal(saved.games[1].phase,"postseason");
+});
+
 function postseasonCandidate(current,{createdAt="08/28/2026 02:00:00",awayUser="friend"}={}){
   const incoming=structuredClone(current);
   incoming.games.push({
