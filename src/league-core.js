@@ -83,6 +83,17 @@ export function isLeagueRow(row) {
   return String(row?.game_mode ?? "").toUpperCase() === "LEAGUE";
 }
 
+export function excludedCorrectionKeys(corrections = [], phase = null) {
+  const decisions = new Map();
+  for (const item of corrections) {
+    if (phase && item.phase !== phase) continue;
+    if ((item.type === "exclude" || item.type === "include") && item.gameKey) {
+      decisions.set(String(item.gameKey), item.type);
+    }
+  }
+  return new Set([...decisions].filter(([, type]) => type === "exclude").map(([key]) => key));
+}
+
 export function historyRows(payload) {
   if (Array.isArray(payload?.game_history)) return payload.game_history;
   if (Array.isArray(payload?.games)) return payload.games;

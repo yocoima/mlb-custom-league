@@ -261,6 +261,18 @@ test("conserva la exclusión administrativa y no cuenta el partido en el resumen
   assert.equal(list.leagues[0].games,0);
 });
 
+test("public snapshot restores an excluded game with an audited include correction",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"},data=snapshot();
+  data.config.corrections=[
+    {id:"exclude-1",phase:"regular",type:"exclude",gameKey:"uuid:one",reason:"Error",createdAt:"2026-09-01T12:00:00.000Z"},
+    {id:"include-1",phase:"regular",type:"include",gameKey:"uuid:one",reason:"Juego oficial válido",createdAt:"2026-09-02T12:00:00.000Z"}
+  ];
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/copa",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
+  assert.equal((await response.json()).games,1);
+  const saved=await (await worker.fetch(new Request("https://worker.example/api/leagues/copa"),env)).json();
+  assert.deepEqual(saved.config.corrections.map(item=>item.type),["exclude","include"]);
+});
+
 test("refresh rechaza un UUID activo que ya pertenece a otro torneo",async()=>{
   const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"},owner=snapshot(),target=snapshot();
   owner.games[0].uuid="shared-uuid";owner.games[0].dedupKey="uuid:shared-uuid";

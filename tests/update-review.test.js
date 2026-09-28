@@ -254,6 +254,31 @@ test("incremental scan discovers new games and capped histories do not advance",
 });
 
 
+test("correction dialog lists excluded games and restores one with an audit entry",async()=>{
+  const {run,context,elements}=appContext();
+  context.crypto={randomUUID:()=>"include-1"};
+  run(`
+    state.config.phase="postseason";
+    state.games.set("uuid:excluded",{id:"1",dedupKey:"uuid:excluded",phase:"postseason",awayUser:"home",homeUser:"away",awayTeam:"Tigers",homeTeam:"Dodgers",awayScore:7,homeScore:0,date:"09/27/2026 03:52:32"});
+    state.games.set("uuid:counted",{id:"2",dedupKey:"uuid:counted",phase:"postseason",awayUser:"home",homeUser:"away",awayTeam:"Tigers",homeTeam:"Dodgers",awayScore:2,homeScore:1,date:"09/27/2026 04:38:54"});
+    state.config.corrections=[{id:"exclude-1",phase:"postseason",type:"exclude",gameKey:"uuid:excluded",reason:"Conexión"}];
+    loadStats=async()=>{};publishLeague=async()=>{};
+  `);
+  elements.set("#correctionPhase",{value:"postseason"});
+  elements.set("#correctionType",{value:"include",querySelector:()=>({disabled:false})});
+  elements.set("#correctionTargetLabel",{firstChild:{textContent:""}});
+  for(const id of ["#resultCorrectionFields","#statCorrectionFields"])elements.set(id,{classList:{toggle(){}}});
+  elements.set("#correctionReason",{value:"Partido oficial válido"});
+  run("updateCorrectionTargets()");
+  assert.match(elements.get("#correctionTarget").innerHTML,/uuid:excluded/);
+  assert.doesNotMatch(elements.get("#correctionTarget").innerHTML,/uuid:counted/);
+  elements.get("#correctionTarget").value="uuid:excluded";
+  await run("saveCorrection()");
+  assert.equal(run('excludedGameKeys("postseason").has("uuid:excluded")'),false);
+  assert.equal(run('rawGamesForPhase("postseason").length'),2);
+  assert.equal(run('state.config.corrections.at(-1).type'),"include");
+});
+
 test("pending view works before scanning and respects excluded games",()=>{
   const {run,elements}=appContext();
   run('state.config.tournamentFormat={gamesPerOpponent:2,qualifierCount:2,postseasonBestOf:3,finalBestOf:5};renderSchedule();');

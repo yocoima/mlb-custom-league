@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   cleanDisplayName,isLeagueRow,normalizeHistoryGame,opponentFromGame,participantTeamFromGame,
-  showDateKey,isOnOrAfterStartDate,postseasonDateAllowed,gameFingerprint,
+  showDateKey,isOnOrAfterStartDate,postseasonDateAllowed,excludedCorrectionKeys,gameFingerprint,
   scoreThroughInning,isCompatibleWithRegulationInnings,matchRosterParticipant,
   isFormallyCompletedGame,
   calculateStandings,baseballIpToOuts,outsToBaseballIp,createStatAccumulator,addGameStats,battingLeaders,pitchingLeaders,tournamentAwards,
@@ -15,6 +15,17 @@ test("postseason uses last regular game when the administrative close was later"
   assert.equal(postseasonDateAllowed("09/27/2026 04:38:54",regularSeason,games),true);
   assert.equal(postseasonDateAllowed("09/25/2026 21:54:18",regularSeason,games),false);
   assert.equal(postseasonDateAllowed("09/24/2026 18:56:00",regularSeason,games),false);
+});
+
+test("including an excluded game restores it while preserving the correction history",()=>{
+  const corrections=[
+    {phase:"postseason",type:"exclude",gameKey:"uuid:game"},
+    {phase:"postseason",type:"include",gameKey:"uuid:game"}
+  ];
+  assert.equal(excludedCorrectionKeys(corrections,"postseason").has("uuid:game"),false);
+  assert.equal(excludedCorrectionKeys(corrections.slice(0,1),"postseason").has("uuid:game"),true);
+  corrections.push({phase:"postseason",type:"exclude",gameKey:"uuid:game"});
+  assert.equal(excludedCorrectionKeys(corrections,"postseason").has("uuid:game"),true);
 });
 
 test("filtra LEAGUE y limpia códigos de formato",()=>{
