@@ -29,6 +29,7 @@ import {
 
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
 import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.5.2";
+import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -980,10 +981,16 @@ function renderSchedule(){
   $("#scheduleContent").innerHTML=rounds.length?rounds.map(round=>`<h3>${round.name}</h3><div class="game-list">${round.series.map(match=>`<article class="game-card"><div>${esc(match.a.username)}<br>${esc(match.b.username)}<div class="meta">Al mejor de ${match.bestOf} · gana con ${match.needed} victorias</div></div><div><strong>${match.wins.join(" – ")}</strong><div class="meta">${match.remaining} ${match.remaining===1?"juego mínimo pendiente":"juegos mínimos pendientes"} · hasta ${match.possible}</div></div></article>`).join("")}</div>`).join(""):'<p class="empty">No hay partidos pendientes con ambos rivales definidos.</p>';
 }
 
+function eliminatedForPhase(phase,games){
+  if(phase==="postseason")return state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat))].map(participantKey)):new Set();
+  const official=state.config.regularSeason?(state.config.postseasonQualifiers?.length?state.config.postseasonQualifiers:state.config.regularSeason.qualifiers||null):null;
+  return new Set([...regularEliminatedPlayers([...configuredRoster(state.config).values()],games,state.config.tournamentFormat,official)].map(participantKey));
+}
+
 function render(){
   const phase=displayedPhase(),games=correctedGamesForPhase(phase).sort((a,b)=>(b.dateValue?.getTime?.()||0)-(a.dateValue?.getTime?.()||0)),stats=displayedStats();
   const standings=calculateStandings(games,participantsForPhase(phase));
-  const eliminated=phase==="postseason"&&state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat))].map(participantKey)):new Set();
+  const eliminated=eliminatedForPhase(phase,games);
   const leagueName=cleanDisplayName(state.config.leagueName);
   const finalized=Boolean(state.config.finalizedAt);
   $("#currentLeagueName").textContent=leagueName?`${leagueName} · ${finalized?"Torneo finalizado":"Solo Custom League"}`:"Solo Custom League · Game History + Game Log";

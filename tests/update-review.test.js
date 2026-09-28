@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import * as format from "../src/tournament-format.js";
+import * as qualification from "../src/qualification.js";
 import * as core from "../src/league-core.js";
 import { sortStatRows } from "../src/update-review.js";
 
@@ -10,7 +11,7 @@ function appContext() {
   const elements = new Map();
   const storage = new Map();
   const context = vm.createContext({
-    ...core, ...format, sortStatRows, URLSearchParams, structuredClone,
+    ...core, ...format, ...qualification, sortStatRows, URLSearchParams, structuredClone,
     location: { search: "" },
     localStorage: { getItem: key => storage.get(key)||null, setItem(key,value) {storage.set(key,value);} },
     document: { querySelector(selector) {
@@ -305,6 +306,20 @@ test("postseason pending view hides completed and undefined pairings",()=>{
   assert.match(html,/B<br>C/);
   assert.doesNotMatch(html,/A<br>D|Cruce por definir|Ronda regular|<h3>Final<\/h3>/);
   assert.match(elements.get("#formatSummary").textContent,/1 serie definida pendiente/);
+});
+
+test("regular standings mark participants outside the archived qualifier list",()=>{
+  const {run}=appContext();
+  run(`
+    state.participants=new Map(["home","away","third","fourth"].map(username=>[username,{username,team:"Tigers"}]));
+    state.config.roster={home:"Tigers",away:"Tigers",third:"Tigers",fourth:"Tigers"};
+    state.config.tournamentFormat={gamesPerOpponent:1,qualifierCount:2,postseasonBestOf:3,finalBestOf:3};
+    state.config.regularSeason={qualifiers:["home","third"]};
+    state.config.postseasonQualifiers=["home","third"];
+  `);
+  assert.equal(run('eliminatedForPhase("regular",[]).has("away")'),true);
+  assert.equal(run('eliminatedForPhase("regular",[]).has("fourth")'),true);
+  assert.equal(run('eliminatedForPhase("regular",[]).has("home")'),false);
 });
 
 test("closing regular season suggests configured number and rejects another selection",async()=>{
