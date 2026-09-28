@@ -282,12 +282,29 @@ test("correction dialog lists excluded games and restores one with an audit entr
 test("pending view works before scanning and respects excluded games",()=>{
   const {run,elements}=appContext();
   run('state.config.tournamentFormat={gamesPerOpponent:2,qualifierCount:2,postseasonBestOf:3,finalBestOf:5};renderSchedule();');
-  assert.match(elements.get("#formatSummary").textContent,/2 participantes/);
-  assert.match(elements.get("#scheduleContent").innerHTML,/2 juegos programados . 2 pendientes/);
+  assert.match(elements.get("#formatSummary").textContent,/2 juegos pendientes/);
+  assert.doesNotMatch(elements.get("#scheduleContent").innerHTML,/Postemporada/);
   run('state.games.set("one",{id:"one",homeUser:"home",awayUser:"away",homeScore:2,awayScore:1,phase:"regular"});renderSchedule();');
-  assert.match(elements.get("#scheduleContent").innerHTML,/2 juegos programados . 1 pendientes/);
+  assert.match(elements.get("#formatSummary").textContent,/1 juego pendiente/);
   run('state.config.corrections=[{phase:"regular",type:"exclude",gameKey:"one"}];renderSchedule();');
-  assert.match(elements.get("#scheduleContent").innerHTML,/2 juegos programados . 2 pendientes/);
+  assert.match(elements.get("#formatSummary").textContent,/2 juegos pendientes/);
+});
+
+test("postseason pending view hides completed and undefined pairings",()=>{
+  const {run,elements}=appContext();
+  run(`
+    state.viewPhase="postseason";state.config.phase="postseason";
+    state.config.tournamentFormat={gamesPerOpponent:1,qualifierCount:4,postseasonBestOf:3,finalBestOf:3};
+    state.config.postseasonQualifiers=["A","B","C","D"];
+    state.games.set("one",{id:"one",phase:"postseason",homeUser:"A",awayUser:"D",homeScore:3,awayScore:1,date:"09/27/2026 01:00:00"});
+    state.games.set("two",{id:"two",phase:"postseason",homeUser:"A",awayUser:"D",homeScore:4,awayScore:2,date:"09/27/2026 02:00:00"});
+    state.games.set("three",{id:"three",phase:"postseason",homeUser:"B",awayUser:"C",homeScore:2,awayScore:1,date:"09/27/2026 03:00:00"});
+    renderSchedule();
+  `);
+  const html=elements.get("#scheduleContent").innerHTML;
+  assert.match(html,/B<br>C/);
+  assert.doesNotMatch(html,/A<br>D|Cruce por definir|Ronda regular|<h3>Final<\/h3>/);
+  assert.match(elements.get("#formatSummary").textContent,/1 serie definida pendiente/);
 });
 
 test("closing regular season suggests configured number and rejects another selection",async()=>{

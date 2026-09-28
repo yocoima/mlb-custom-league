@@ -28,7 +28,7 @@ import {
 } from "./src/league-core.js?v=4.5.1";
 
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
-import { tournamentFormat, regularSchedule, postseasonSchedule, pendingMatchupGroups } from "./src/tournament-format.js?v=4.4.2";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.5.2";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -964,24 +964,26 @@ function filteredStatRows(players,prefix){
 
 function renderSchedule(){
   const format=state.config.tournamentFormat;
-  const participants=Object.entries(state.config.roster||{}).map(([username,value])=>({username:typeof value==="string"?username:(value.username||username),team:typeof value==="string"?value:value.team}));
-  $("#formatSummary").textContent=format?
-    `${participants.length} participantes · ${(participants.length-1)*format.gamesPerOpponent} juegos por equipo en ronda regular · ${format.qualifierCount} clasifican`:
-    `${participants.length} participantes en el roster. Activa el formato para calcular los pendientes.`;
-  if(!format){$("#scheduleContent").innerHTML='<p class="empty">Configura los juegos por rival, clasificados y duración de las series en Configuración.</p>';return;}
-  const schedule=regularSchedule(participants,correctedGamesForPhase("regular"),format.gamesPerOpponent);
-  const name=p=>`${esc(p.username)} · ${esc(p.team||"")}`;
-  const teamRows=schedule.teams.map(p=>`<tr><td>${name(p)}</td><td>${p.played} / ${p.scheduled}</td><td>${p.remaining}</td></tr>`).join("");
-  const pairs=pendingMatchupGroups(schedule).map(({team,opponents})=>`<article class="game-card"><div><strong>${name(team)} · ${team.remaining} ${team.remaining===1?"pendiente":"pendientes"}</strong><ul>${opponents.map(({participant,remaining})=>`<li>${name(participant)}${remaining>1?` · ${remaining} juegos`:""}</li>`).join("")}</ul></div></article>`).join("")||'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
-  const rounds=postseasonSchedule(state.config.postseasonQualifiers||[],correctedGamesForPhase("postseason"),format);
-  const playoffs=rounds.length?rounds.map(round=>`<h3>${round.name}</h3><div class="game-list">${round.series.map(match=>`<article class="game-card"><div>${esc(match.a.username||match.a.label)}<br>${esc(match.b.username||match.b.label)}<div class="meta">Al mejor de ${match.bestOf} · gana con ${match.needed} victorias</div></div><div><strong>${match.wins.join(" – ")}</strong><div class="meta">${match.winner?`Ganador: ${esc(match.winner)}`:!match.a.username||!match.b.username?"Cruce por definir":`${match.remaining} juegos mínimos pendientes · hasta ${match.possible}`}</div></div></article>`).join("")}</div>`).join(""):
-    `<p>Los cruces se generan al cerrar la ronda regular, según la posición de los clasificados. Postemporada al mejor de ${format.postseasonBestOf}; final al mejor de ${format.finalBestOf}.</p>`;
-  $("#scheduleContent").innerHTML=`<h3>Ronda regular</h3><p>${schedule.scheduled} juegos programados · ${schedule.remaining} pendientes</p><details><summary>Resumen de juegos por participante</summary><div class="table-wrap schedule-table"><table><thead><tr><th>Participante</th><th>Jugados / previstos</th><th>Pendientes</th></tr></thead><tbody>${teamRows}</tbody></table></div></details><details open><summary>Pendientes por equipo</summary><p>Cada cruce aparece una sola vez, agrupado primero bajo el equipo con m?s juegos pendientes.</p><div class="game-list">${pairs}</div></details><h3>Postemporada y final</h3>${playoffs}`;
+  if(!format){$("#formatSummary").textContent="Formato sin configurar";$("#scheduleContent").innerHTML='<p class="empty">Configura los juegos por rival, clasificados y duración de las series en Configuración.</p>';return;}
+  if(displayedPhase()==="regular"){
+    const participants=Object.entries(state.config.roster||{}).map(([username,value])=>({username:typeof value==="string"?username:(value.username||username),team:typeof value==="string"?value:value.team}));
+    const schedule=regularSchedule(participants,correctedGamesForPhase("regular"),format.gamesPerOpponent);
+    const name=p=>`${esc(p.username)} · ${esc(p.team||"")}`;
+    const groups=pendingMatchupGroups(schedule);
+    $("#formatSummary").textContent=`${schedule.remaining} ${schedule.remaining===1?"juego pendiente":"juegos pendientes"} de ronda regular`;
+    $("#scheduleContent").innerHTML=groups.length?`<div class="game-list">${groups.map(({team,opponents})=>`<article class="game-card"><div><strong>${name(team)} · ${team.remaining} ${team.remaining===1?"pendiente":"pendientes"}</strong><ul>${opponents.map(({participant,remaining})=>`<li>${name(participant)}${remaining>1?` · ${remaining} juegos`:""}</li>`).join("")}</ul></div></article>`).join("")}</div>`:'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
+    return;
+  }
+  const rounds=pendingPostseasonRounds(postseasonSchedule(state.config.postseasonQualifiers||[],correctedGamesForPhase("postseason"),format));
+  const pending=rounds.reduce((total,round)=>total+round.series.length,0);
+  $("#formatSummary").textContent=`${pending} ${pending===1?"serie definida pendiente":"series definidas pendientes"} en postemporada`;
+  $("#scheduleContent").innerHTML=rounds.length?rounds.map(round=>`<h3>${round.name}</h3><div class="game-list">${round.series.map(match=>`<article class="game-card"><div>${esc(match.a.username)}<br>${esc(match.b.username)}<div class="meta">Al mejor de ${match.bestOf} · gana con ${match.needed} victorias</div></div><div><strong>${match.wins.join(" – ")}</strong><div class="meta">${match.remaining} ${match.remaining===1?"juego mínimo pendiente":"juegos mínimos pendientes"} · hasta ${match.possible}</div></div></article>`).join("")}</div>`).join(""):'<p class="empty">No hay partidos pendientes con ambos rivales definidos.</p>';
 }
 
 function render(){
   const phase=displayedPhase(),games=correctedGamesForPhase(phase).sort((a,b)=>(b.dateValue?.getTime?.()||0)-(a.dateValue?.getTime?.()||0)),stats=displayedStats();
   const standings=calculateStandings(games,participantsForPhase(phase));
+  const eliminated=phase==="postseason"&&state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat))].map(participantKey)):new Set();
   const leagueName=cleanDisplayName(state.config.leagueName);
   const finalized=Boolean(state.config.finalizedAt);
   $("#currentLeagueName").textContent=leagueName?`${leagueName} · ${finalized?"Torneo finalizado":"Solo Custom League"}`:"Solo Custom League · Game History + Game Log";
@@ -996,7 +998,7 @@ function render(){
   $("#lastSync").textContent=state.lastSync?new Date(state.lastSync).toLocaleString():"—";
   renderWarnings();
 
-  $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr><td class="rank">${i+1}</td><td class="standings-player"><strong>${esc(r.user)}</strong><small class="mobile-only">${esc(r.team)}</small></td><td class="desktop-only"><span class="team-pill">${esc(r.team)}</span></td><td class="desktop-only">${r.gp}</td><td class="desktop-only">${r.w}</td><td class="desktop-only">${r.l}</td><td class="mobile-only record">${r.w}-${r.l}</td><td class="desktop-only">${r.homeGp}</td><td class="desktop-only">${r.awayGp}</td><td>${fmt3(r.pct)}</td><td>${r.rf}</td><td class="desktop-only">${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td class="desktop-only">${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="14" class="empty">Sin datos.</td></tr>`;
+  $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr class="${eliminated.has(participantKey(r.user))?"standings-eliminated":""}"><td class="rank">${i+1}</td><td class="standings-player"><strong${eliminated.has(participantKey(r.user))?' title="Eliminado"':""}>${esc(r.user)}</strong><small class="mobile-only">${esc(r.team)}</small></td><td class="desktop-only"><span class="team-pill">${esc(r.team)}</span></td><td class="desktop-only">${r.gp}</td><td class="desktop-only">${r.w}</td><td class="desktop-only">${r.l}</td><td class="mobile-only record">${r.w}-${r.l}</td><td class="desktop-only">${r.homeGp}</td><td class="desktop-only">${r.awayGp}</td><td>${fmt3(r.pct)}</td><td>${r.rf}</td><td class="desktop-only">${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td class="desktop-only">${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="14" class="empty">Sin datos.</td></tr>`;
 
   renderSchedule();
   renderLeaders(stats);

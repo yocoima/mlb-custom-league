@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tournamentFormat, regularSchedule, postseasonSchedule, pendingMatchupGroups } from "../src/tournament-format.js";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "../src/tournament-format.js";
 
 const format={gamesPerOpponent:2,qualifierCount:4,postseasonBestOf:3,finalBestOf:5};
 const participants=["A","B","C","D"].map(username=>({username,team:"Dodgers"}));
@@ -67,4 +67,16 @@ test("eight qualifiers get a stable seeded bracket",()=>{
   const rounds=postseasonSchedule(["A","B","C","D","E","F","G","H"],[],{...format,qualifierCount:8});
   assert.deepEqual(rounds[0].series.map(s=>[s.a.username,s.b.username]),[["A","H"],["D","E"],["B","G"],["C","F"]]);
   assert.equal(rounds.length,3);
+});
+
+test("only unresolved series with both opponents appear as pending and losers are eliminated",()=>{
+  const first=[game(1,"A","D"),game(2,"D","A",1,3),game(3,"B","C")];
+  const rounds=postseasonSchedule(["A","B","C","D"],first,format);
+  assert.deepEqual(pendingPostseasonRounds(rounds).map(round=>round.series.map(match=>[match.a.username,match.b.username])),[[["B","C"]]]);
+  assert.deepEqual([...eliminatedPostseasonPlayers(rounds)],["D"]);
+  const completed=postseasonSchedule(["A","B","C","D"],[...first,game(4,"C","B",1,4)],format);
+  assert.equal(pendingPostseasonRounds(completed).length,1);
+  assert.deepEqual([...eliminatedPostseasonPlayers(completed)],["D","C"]);
+  const final=postseasonSchedule(["A","B","C","D"],[...first,game(4,"C","B",1,4),game(5,"A","B"),game(6,"B","A",1,3),game(7,"A","B")],format);
+  assert.equal(pendingPostseasonRounds(final).length,0);
 });

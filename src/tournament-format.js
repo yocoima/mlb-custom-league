@@ -88,3 +88,18 @@ export function postseasonSchedule(qualifiers, games, format) {
   }
   return rounds;
 }
+
+export function pendingPostseasonRounds(rounds) {
+  return rounds.map(round=>({...round,series:round.series.filter(match=>
+    !match.winner && match.a.username && match.b.username && match.possible>0
+  )})).filter(round=>round.series.length);
+}
+
+export function eliminatedPostseasonPlayers(rounds) {
+  const eliminated=new Set();
+  for(const round of rounds)for(const match of round.series){
+    if(!match.winner||!match.a.username||!match.b.username)continue;
+    eliminated.add(sameText(match.winner,match.a.username)?match.b.username:match.a.username);
+  }
+  return eliminated;
+}
