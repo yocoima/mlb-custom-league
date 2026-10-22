@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import * as format from "../src/tournament-format.js";
 import * as qualification from "../src/qualification.js";
+import * as calculator from "../src/calculator.js";
 import * as core from "../src/league-core.js";
 import { sortStatRows } from "../src/update-review.js";
 
@@ -11,7 +12,7 @@ function appContext() {
   const elements = new Map();
   const storage = new Map();
   const context = vm.createContext({
-    ...core, ...format, ...qualification, sortStatRows, URLSearchParams, structuredClone,
+    ...core, ...format, ...qualification, ...calculator, sortStatRows, URLSearchParams, structuredClone,
     location: { search: "" },
     localStorage: { getItem: key => storage.get(key)||null, setItem(key,value) {storage.set(key,value);} },
     document: { querySelector(selector) {
@@ -32,6 +33,37 @@ function appContext() {
   `, context);
   return { context, elements, run: code => vm.runInContext(code, context) };
 }
+
+test("calculator renders read-only guarantees and recalculates when selecting a team",()=>{
+  const {run,elements}=appContext();
+  elements.set("#calculator",{classList:{contains:()=>true}});
+  elements.set("#calculatorTeam",{value:"A",innerHTML:""});
+  run(`
+    state.config={...defaultConfig(),username:"A",startDate:"2026-08-01",roster:{A:"Tigers",B:"Tigers",C:"Tigers",D:"Tigers"},tournamentFormat:{gamesPerOpponent:1,qualifierCount:2}};
+    loadConfiguredParticipants();
+    const fixtures=[["D","A"],["C","B"],["D","B"],["D","C"]];
+    fixtures.forEach(([winner,loser],i)=>state.games.set(String(i),{id:String(i),homeUser:winner,awayUser:loser,homeScore:3,awayScore:1}));
+  `);
+  const before=run("JSON.stringify(publicSnapshot())");
+  run("renderCalculator()");
+  assert.match(elements.get("#calculatorContent").innerHTML,/2 de sus 2 partidos pendientes/);
+  assert.match(elements.get("#calculatorContent").innerHTML,/Análisis parcial de carreras/);
+  elements.get("#calculatorTeam").value="D";
+  run("renderCalculator()");
+  assert.match(elements.get("#calculatorContent").innerHTML,/clasificación está asegurada/);
+  assert.equal(run("JSON.stringify(publicSnapshot())"),before);
+});
+
+test("calculator tolerates empty startup and official archived qualifications",()=>{
+  const {run,elements}=appContext();
+  elements.set("#calculator",{classList:{contains:()=>true}});
+  elements.set("#calculatorTeam",{value:"",innerHTML:""});
+  run("renderCalculator()");
+  assert.match(elements.get("#calculatorContent").innerHTML,/Configura el roster/);
+  run('loadConfiguredParticipants();state.config.regularSeason={qualifiers:["away"]};state.config.postseasonQualifiers=["away"];renderCalculator()');
+  assert.match(elements.get("#calculatorContent").innerHTML,/Ronda regular cerrada/);
+  assert.match(elements.get("#calculatorContent").innerHTML,/Eliminado/);
+});
 
 test("publication warns when an older Worker drops the tournament format",async()=>{
   const {run,context,elements}=appContext();

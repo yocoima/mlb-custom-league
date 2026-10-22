@@ -30,6 +30,7 @@ import {
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
 import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.5.2";
 import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
+import { qualificationCalculator } from "./src/calculator.js?v=4.6.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -38,6 +39,7 @@ const LEGACY_STORAGE_KEY = "mlb26_custom_league_config_v2";
 const API_ORIGIN = "https://mlb26.theshow.com";
 const DEFAULT_PROXY_BASE = "https://mlb26-custom-league-proxy.yocoimadejesus.workers.dev";
 const CURRENT_LEAGUE_NAME = "Torneo Reclutas V2";
+let calculatorCache=null;
 
 const state = {
   config: loadConfig(),
@@ -1006,6 +1008,80 @@ function renderSchedule(){
   $("#scheduleContent").innerHTML=rounds.length?rounds.map(round=>`<h3>${round.name}</h3><div class="game-list">${round.series.map(match=>`<article class="game-card"><div>${esc(match.a.username)}<br>${esc(match.b.username)}<div class="meta">Al mejor de ${match.bestOf} · gana con ${match.needed} victorias</div></div><div><strong>${match.wins.join(" – ")}</strong><div class="meta">${match.remaining} ${match.remaining===1?"juego mínimo pendiente":"juegos mínimos pendientes"} · hasta ${match.possible}</div></div></article>`).join("")}</div>`).join(""):'<p class="empty">No hay partidos pendientes con ambos rivales definidos.</p>';
 }
 
+function calculatorConditionText(condition){
+  if(!condition.length)return "Cualquier resultado de los partidos pendientes.";
+  return condition.map(pair=>{
+    if(pair.remaining===1)return pair.aWins?`${pair.a} gana a ${pair.b}`:`${pair.b} gana a ${pair.a}`;
+    return `${pair.a} gana ${pair.aWins} de los ${pair.remaining} partidos pendientes ante ${pair.b} (${pair.b} gana ${pair.remaining-pair.aWins})`;
+  }).join("; y ")+".";
+}
+function calculatorRunRuleText(rule){
+  if(rule.type==="margin")return rule.minimum>0
+    ?`Ganar a ${rule.rival} por al menos ${rule.minimum} carreras.`
+    :`Perder ante ${rule.rival} por como máximo ${-rule.minimum} carreras.`;
+  if(rule.type==="score"){
+    const boundary=rule.equalRuns>=0&&rule.maxAllowed>=0?` También alcanza con anotar ${rule.equalRuns} y recibir como máximo ${rule.maxAllowed}.`:"";
+    return `Para superar a ${rule.rival}: anotar al menos ${rule.strictRuns} carreras.${boundary}`;
+  }
+  if(rule.minAllowed<=0)return `Para superar a ${rule.rival}: ${rule.rival} debe anotar como máximo ${rule.equalRuns} carreras.`;
+  const lower=rule.strictMaximum>=0?`${rule.rival} debe anotar como máximo ${rule.strictMaximum} carreras; o anotar ${rule.equalRuns} y recibir al menos ${rule.minAllowed}.`:`${rule.rival} debe anotar ${rule.equalRuns} carreras y recibir al menos ${rule.minAllowed}.`;
+  return `Para superar a ${rule.rival}: ${lower}`;
+}
+function renderCalculator(){
+  if(!$("#calculator").classList.contains("active"))return;
+  const participants=participantsForPhase("regular"),select=$("#calculatorTeam"),previous=select.value;
+  select.innerHTML=participants.map(person=>`<option value="${esc(person.username)}">${esc(person.username)} · ${esc(person.team||"")}</option>`).join("");
+  select.value=participants.some(person=>person.username===previous)?previous:participants.find(person=>sameText(person.username,state.config.username))?.username||participants[0]?.username||"";
+  const games=correctedGamesForPhase("regular"),official=state.config.regularSeason?(state.config.postseasonQualifiers?.length?state.config.postseasonQualifiers:state.config.regularSeason.qualifiers||[]):null;
+  const cacheKey=JSON.stringify([state.activeLeagueId,select.value,participants,games,state.config.tournamentFormat,official]);
+  if(calculatorCache?.key!==cacheKey)calculatorCache={key:cacheKey,result:qualificationCalculator(participants,games,state.config.tournamentFormat,select.value,{officialQualifiers:official})};
+  const result=calculatorCache.result,content=$("#calculatorContent");
+  if(result.mode==="unconfigured"){
+    content.innerHTML='<p class="empty">Configura el roster, los juegos contra cada rival y la cantidad de clasificados para calcular las condiciones de la ronda regular.</p>';return;
+  }
+  const status=result.status==="qualified"?"Clasificado":result.status==="eliminated"?"Eliminado":"En disputa";
+  let html=`<article class="calculator-status ${result.status}"><span>${esc(result.username)} · Ronda regular</span><h3>${status}</h3><p>Posición actual: ${result.position} · Récord ${result.record.w}–${result.record.l} · ${result.record.rf} carreras anotadas · ${result.record.ra} permitidas${result.remaining!==undefined?` · ${result.remaining} ${result.remaining===1?"partido propio pendiente":"partidos propios pendientes"}`:""}</p></article>`;
+  if(result.mode==="closed")html+='<p class="info-box">Ronda regular cerrada. Se muestran los clasificados oficiales seleccionados al cerrar la fase; los partidos de postemporada no cambian esta clasificación.</p>';
+  else if(result.mode==="complete")html+='<p class="info-box">No quedan partidos pendientes de ronda regular. El resultado corresponde a la tabla final y sus criterios de desempate.</p>';
+  else if(result.mode==="early"){
+    html+=`<p class="info-box">Quedan ${result.totalRemaining} partidos en la ronda regular. Las condiciones detalladas estarán disponibles cuando queden ${result.detailLimit} o menos.</p>`;
+    if(result.status==="contending")html+=`<p>${result.winAllGuarantees?`Ganar sus ${result.remaining} partidos pendientes asegura el pase, sin importar las carreras ni los demás resultados.`:"Todavía no hay una garantía confirmada de clasificación. El análisis de combinaciones se habilitará cerca del cierre."}</p>`;
+    html+='<p class="calculator-note">Análisis general: solo se muestran garantías demostrables; todavía no se evalúan todas las combinaciones.</p>';
+  }else{
+    html+=`<p class="calculator-note">${result.totalRemaining===1?"Queda":"Quedan"} ${result.totalRemaining} ${result.totalRemaining===1?"partido":"partidos"} de ronda regular · Clasifican ${result.qualifierCount} equipos.</p>`;
+    if(result.guaranteeWins!==null&&result.status==="contending")html+=`<p class="info-box">Ganar al menos <strong>${result.guaranteeWins} de sus ${result.remaining} partidos pendientes</strong> asegura el pase, sin importar las carreras ni los resultados ajenos.</p>`;
+    if(result.minimumWins>0&&result.status==="contending")html+=`<p>Con menos de <strong>${result.minimumWins} ${result.minimumWins===1?"victoria adicional":"victorias adicionales"}</strong> queda eliminado. Alcanzar ese mínimo puede exigir ayuda de otros resultados o desempates.</p>`;
+    if(result.status==="qualified")html+='<p>Su clasificación está asegurada con cualquier resultado de los partidos pendientes.</p>';
+    if(result.status==="eliminated")html+='<p>Ningún resultado ni marcador de los partidos pendientes permite alcanzar un cupo.</p>';
+    if(result.status==="contending"){
+      html+=`<div class="table-wrap calculator-table"><table><thead><tr><th>Victorias adicionales</th><th>Qué significa</th></tr></thead><tbody>${result.buckets.map(bucket=>`<tr><td>${bucket.wins} de ${result.remaining}</td><td>${bucket.guaranteed?"Asegura el pase, sin importar las carreras ni los resultados ajenos.":bucket.eliminated?"Queda eliminado con ese total.":bucket.canGuarantee?"Puede asegurar el pase con resultados favorables en otros partidos.":"Depende de otros resultados o del desempate por carreras."}</td></tr>`).join("")}</tbody></table></div>`;
+      if(result.runAnalysis==="exact"){
+        html+='<h3>Condiciones del último partido</h3><div class="calculator-grid">';
+        for(const branch of result.finalGame){
+          html+=`<article class="calculator-condition"><h4>Si ${esc(branch.winner)} gana a ${esc(branch.loser)}</h4>`;
+          if(branch.status==="guaranteed")html+=`<p>${esc(result.username)} clasifica con cualquier marcador compatible con esa victoria.</p>`;
+          else if(branch.status==="eliminated")html+=`<p>${esc(result.username)} queda eliminado, sin importar las carreras.</p>`;
+          else{
+            html+=`<p>Para clasificar, ${esc(result.username)} necesita cumplir ${branch.passNeeded===branch.rules.length?"todas":`al menos ${branch.passNeeded}`} de las siguientes condiciones de desempate:</p><ul>${branch.rules.map(rule=>`<li>${esc(calculatorRunRuleText(rule))}</li>`).join("")}</ul><p>Si no las cumple, queda eliminado.</p>`;
+          }
+          html+='</article>';
+        }
+        html+='</div><p class="calculator-note">Estos umbrales incluyen las carreras anotadas y permitidas ya acumuladas. Si todos los criterios numéricos empatan, se aplica el orden alfabético de la tabla.</p>';
+      }else{
+        html+='<div class="calculator-grid">';
+        for(const [field,title] of [["qualificationConditions","Resultados que aseguran el pase"],["eliminationConditions","Resultados que lo eliminan"]]){
+          const conditions=result[field];
+          html+=`<article class="calculator-condition"><h3>${title}</h3>${conditions.items.length?`<p>Basta con que se cumpla una de estas combinaciones completas:</p><ul>${conditions.items.map(condition=>`<li>${esc(calculatorConditionText(condition))}</li>`).join("")}</ul>${conditions.truncated?'<p class="calculator-note">Se muestran algunas condiciones suficientes; también existen otras.</p>':""}`:"<p>No hay una condición de ganadores confirmada que permita afirmar este resultado sin resolver las carreras.</p>"}</article>`;
+        }
+        html+='</div>';
+        if(result.buckets.some(bucket=>bucket.tiebreak))html+='<p class="info-box">Análisis parcial de carreras: algunas combinaciones dependen de desempates compartidos entre varios partidos. No se afirma que esas combinaciones alcancen para clasificar. Los umbrales exactos de carreras se habilitan cuando queda un único partido en toda la ronda.</p>';
+      }
+    }
+  }
+  html+='<p class="calculator-note">Orden de clasificación: porcentaje de victorias → más carreras anotadas → menos carreras permitidas → orden alfabético. La calculadora consulta la ronda regular y no modifica resultados oficiales.</p>';
+  content.innerHTML=html;
+}
+
 function eliminatedForPhase(phase,games){
   if(phase==="postseason")return state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat))].map(participantKey)):new Set();
   // Rendering must work before a published league or a complete draft is loaded.
@@ -1036,6 +1112,7 @@ function render(){
   $("#standingsBody").innerHTML=standings.length?standings.map((r,i)=>`<tr class="${eliminated.has(participantKey(r.user))?"standings-eliminated":""}"><td class="rank">${i+1}</td><td class="standings-player"><strong${eliminated.has(participantKey(r.user))?' title="Eliminado"':""}>${esc(r.user)}</strong><small class="mobile-only">${esc(r.team)}</small></td><td class="desktop-only"><span class="team-pill">${esc(r.team)}</span></td><td class="desktop-only">${r.gp}</td><td class="desktop-only">${r.w}</td><td class="desktop-only">${r.l}</td><td class="mobile-only record">${r.w}-${r.l}</td><td class="desktop-only">${r.homeGp}</td><td class="desktop-only">${r.awayGp}</td><td>${fmt3(r.pct)}</td><td>${r.rf}</td><td class="desktop-only">${r.ra}</td><td class="${r.diff>=0?"positive":"negative"}">${r.diff>0?"+":""}${r.diff}</td><td class="desktop-only">${r.form.join(" ")||"—"}</td></tr>`).join(""):`<tr><td colspan="14" class="empty">Sin datos.</td></tr>`;
 
   renderSchedule();
+  renderCalculator();
   renderLeaders(stats);
   renderChampions();
 
@@ -1095,7 +1172,8 @@ for(const id of ["battingSearch","pitchingSearch"])$("#"+id).addEventListener("i
 for(const id of ["battingManagerFilter","battingTeamFilter","pitchingManagerFilter","pitchingTeamFilter"])$("#"+id).addEventListener("change",render);
 $("#phaseView").addEventListener("change",event=>{state.viewPhase=event.target.value;render()});
 $("#leagueSelector").addEventListener("change",event=>switchActiveLeague(event.target.value));
-document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));btn.classList.add("active");$("#"+btn.dataset.tab).classList.add("active")}));
+$("#calculatorTeam").addEventListener("change",renderCalculator);
+document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));btn.classList.add("active");$("#"+btn.dataset.tab).classList.add("active");if(btn.dataset.tab==="calculator")renderCalculator()}));
 
 $("#closeUpdateReview").addEventListener("click",()=>$("#updateReviewDialog").close());
 $("#updateDiscarded").addEventListener("click",async event=>{

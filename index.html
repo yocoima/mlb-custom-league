@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1020" />
   <title>MLB The Show 26 — Custom League Manager</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=4.5.6" />
+  <link rel="stylesheet" href="styles.css?v=4.6.0" />
 </head>
 <body>
   <header class="topbar">
@@ -62,6 +62,7 @@
       <button class="tab" data-tab="leaders">Líderes</button>
       <button class="tab" data-tab="games">Partidos</button>
       <button class="tab" data-tab="schedule">Pendientes</button>
+      <button class="tab" data-tab="calculator">Calculadora</button>
       <button class="tab" data-tab="batting">Bateo</button>
       <button class="tab" data-tab="pitching">Pitcheo</button>
       <button class="tab" data-tab="champions">Campeones</button>
@@ -90,10 +91,12 @@
     <section id="schedule" class="panel">
       <div class="panel-head"><div><h2>Partidos pendientes</h2><p id="formatSummary"></p></div></div>
       <div id="scheduleContent"></div>
-      <section id="scenarioModule" class="scenario-module hidden" aria-labelledby="scenarioTitle">
-        <div class="scenario-head"><div><h3 id="scenarioTitle">Escenarios de clasificación</h3><p>Ejemplos de resultados que permitirían entrar a postemporada.</p></div><label>Equipo<select id="scenarioTeam"></select></label></div>
-        <div id="scenarioContent"></div>
-      </section>
+    </section>
+
+    <section id="calculator" class="panel">
+      <div class="panel-head"><div><h2>Calculadora de clasificación</h2><p>Qué necesita cada equipo en la ronda regular, según los resultados oficiales y los partidos pendientes.</p></div></div>
+      <label class="filter-control calculator-selector">Equipo<select id="calculatorTeam" aria-label="Equipo para calcular clasificación"></select></label>
+      <div id="calculatorContent" aria-live="polite"><p class="empty">Selecciona una liga para consultar sus condiciones.</p></div>
     </section>
 
     <section id="batting" class="panel">
@@ -228,6 +231,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.5.6"></script>
+  <script type="module" src="app.js?v=4.6.0"></script>
 </body>
 </html>

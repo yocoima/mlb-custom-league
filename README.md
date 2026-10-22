@@ -142,6 +142,16 @@ Para borrar un torneo creado por error, selecciónalo y abre **Configuración �
 
 El selector **Torneo** permite cambiar entre torneos activos o finalizados. También se puede compartir un torneo específico con `?league=identificador`. La liga publicada antes de esta actualización se conserva automáticamente como `principal`; no hay que volver a cargarla.
 
+## Calculadora de clasificación
+
+La pestaña **Calculadora** consulta la ronda regular sin modificar ni publicar datos. Selecciona un equipo para consultar su situación, las victorias que aseguran el pase y las combinaciones suficientes de resultados que clasifican o eliminan al equipo. No incluye controles para introducir resultados hipotéticos ni porcentajes de probabilidad.
+
+Con más de **8 partidos pendientes en toda la ronda**, solo muestra garantías generales; el análisis de combinaciones se habilita al llegar a ese límite. Las condiciones de ganadores que se muestran son suficientes y consideran todos los resultados no mencionados. Si solo se muestran algunas, la interfaz lo indica. Las combinaciones que todavía dependen de desempates por carreras se identifican como análisis parcial: no se presentan como un pase confirmado.
+
+Cuando queda **un único partido pendiente en toda la ronda**, calcula condiciones exactas de carreras anotadas, carreras permitidas o margen de victoria para cada posible ganador. Si hay varios rivales empatados, indica cuántas condiciones deben cumplirse. Aplica el mismo orden que la tabla: PCT, RF descendente, RA ascendente y nombre en orden alfabético. Los marcadores futuros son enteros no negativos y el ganador anota más que el perdedor; no se impone un máximo de carreras.
+
+Al cerrar la ronda regular, muestra los clasificados oficiales archivados; la postemporada no altera ese resultado. Sin formato o roster configurados, solicita completar la configuración.
+
 ## Ronda regular y postemporada
 
 1. Durante la ronda regular, cualquier visitante puede usar **Actualizar liga**.
