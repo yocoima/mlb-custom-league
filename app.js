@@ -1008,8 +1008,11 @@ function renderSchedule(){
 
 function eliminatedForPhase(phase,games){
   if(phase==="postseason")return state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat))].map(participantKey)):new Set();
+  // Rendering must work before a published league or a complete draft is loaded.
+  let participants;
+  try{participants=[...configuredRoster(state.config).values()];}catch{return new Set();}
   const official=state.config.regularSeason?(state.config.postseasonQualifiers?.length?state.config.postseasonQualifiers:state.config.regularSeason.qualifiers||null):null;
-  return new Set([...regularEliminatedPlayers([...configuredRoster(state.config).values()],games,state.config.tournamentFormat,official)].map(participantKey));
+  return new Set([...regularEliminatedPlayers(participants,games,state.config.tournamentFormat,official)].map(participantKey));
 }
 
 function render(){
