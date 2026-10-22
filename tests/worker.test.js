@@ -9,7 +9,8 @@ function mockKv(){
       const value=values.get(key)??null;
       return value!==null&&type==="json"?JSON.parse(value):value;
     },
-    async put(key,value){values.set(key,value)}
+    async put(key,value){values.set(key,value)},
+    async delete(key){values.delete(key)}
   };
 }
 
@@ -22,6 +23,50 @@ function snapshot(){
     stats:{batting:[["player",{name:"Batter",h:1}]],pitching:[],loadedGameIds:["1"],failedGameIds:[]}
   };
 }
+
+test("DELETE protege la liga y elimina solamente el torneo seleccionado",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"};
+  for(const id of ["liga-anti-hackers","anti-hacks"]){
+    await kv.put(`league:${id}`,JSON.stringify(snapshot()));
+  }
+  await kv.put("league-index-v1",JSON.stringify({version:1,leagues:[{id:"liga-anti-hackers"},{id:"anti-hacks"}]}));
+  const url="https://worker.example/api/leagues/liga-anti-hackers";
+  for(const token of ["","incorrect"]){
+    const denied=await worker.fetch(new Request(url,{method:"DELETE",headers:{Authorization:`Bearer ${token}`}}),env);
+    assert.equal(denied.status,401);
+    assert.ok(await kv.get("league:liga-anti-hackers"));
+    assert.equal((await kv.get("league-index-v1","json")).leagues.length,2);
+  }
+  const deleted=await worker.fetch(new Request(url,{method:"DELETE",headers:{Authorization:"Bearer private-token"}}),env);
+  assert.equal(deleted.status,200);
+  assert.equal(await kv.get("league:liga-anti-hackers"),null);
+  assert.ok(await kv.get("league:anti-hacks"));
+  const index=await (await worker.fetch(new Request("https://worker.example/api/leagues"),env)).json();
+  assert.deepEqual(index.leagues.map(item=>item.id),["anti-hacks"]);
+  assert.equal((await worker.fetch(new Request(url),env)).status,404);
+  assert.equal((await worker.fetch(new Request(url,{method:"POST",body:JSON.stringify(snapshot())}),env)).status,401);
+  assert.equal((await worker.fetch(new Request(url+"/refresh",{method:"POST",body:JSON.stringify(snapshot())}),env)).status,404);
+  assert.equal((await worker.fetch(new Request(url,{method:"DELETE",headers:{Authorization:"Bearer private-token"}}),env)).status,404);
+});
+
+test("DELETE de principal también borra el snapshot heredado sin resucitarlo",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"};
+  for(const key of ["league:principal","public-league-v1"])await kv.put(key,JSON.stringify(snapshot()));
+  const response=await worker.fetch(new Request("https://worker.example/api/league",{method:"DELETE",headers:{Authorization:"Bearer private-token"}}),env);
+  assert.equal(response.status,200);
+  for(const key of ["league:principal","public-league-v1"])assert.equal(await kv.get(key),null);
+  const index=await (await worker.fetch(new Request("https://worker.example/api/leagues"),env)).json();
+  assert.deepEqual(index.leagues,[]);
+  const hall=await (await worker.fetch(new Request("https://worker.example/api/champions"),env)).json();
+  assert.deepEqual(hall.champions,[]);
+});
+
+test("DELETE requiere secreto configurado y permite preflight CORS",async()=>{
+  const url="https://worker.example/api/leagues/test";
+  assert.equal((await worker.fetch(new Request(url,{method:"DELETE"}),{LEAGUE_STORE:mockKv()})).status,503);
+  const preflight=await worker.fetch(new Request(url,{method:"OPTIONS"}),{});
+  assert.match(preflight.headers.get("Access-Control-Allow-Methods"),/DELETE/);
+});
 
 test("POST /api/league exige la clave privada",async()=>{
   const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"};

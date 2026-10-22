@@ -269,6 +269,31 @@ async function switchActiveLeague(id){
   fillForm();render();updateLeagueSelector();await loadPublishedLeague();
 }
 
+async function deleteActiveLeague(){
+  if(state.syncing)throw new Error("Espera a que termine la actualización de la liga.");
+  const id=state.activeLeagueId,name=state.config.leagueName||id;
+  if(!window.confirm(`¿Eliminar definitivamente la liga "${name}" (${id})? Se borrarán sus partidos, estadísticas e historial de este torneo. Esta acción no se puede deshacer.`))return;
+  const published=state.publishedAt||state.leagues.find(entry=>entry.id===id)?.updatedAt;
+  if(published){
+    const token=window.prompt("Clave privada para eliminar la liga:");
+    if(!token)return;
+    const response=await fetch(leagueApiUrl(),{method:"DELETE",headers:{Accept:"application/json",Authorization:`Bearer ${token}`}});
+    let result={};try{result=await response.json()}catch{}
+    if(!response.ok&&response.status!==404){
+      if(response.status===401)throw new Error("Clave de publicación incorrecta.");
+      throw new Error(result.error||`No se pudo eliminar la liga (HTTP ${response.status}).`);
+    }
+  }
+  state.leagues=state.leagues.filter(entry=>entry.id!==id);
+  for(const key of [STORAGE_KEY,STATE_KEY,LEGACY_STORAGE_KEY])localStorage.removeItem(key);
+  for(const key of Object.keys(localStorage))if(key.startsWith("mlb26_scan_v2:")&&key.slice("mlb26_scan_v2:".length).startsWith(JSON.stringify([id]).slice(0,-1)+","))localStorage.removeItem(key);
+  const next=state.leagues[0]?.id;
+  const url=new URL(location.href);
+  if(next){localStorage.setItem("mlb26_active_league",next);url.searchParams.set("league",next);}
+  else{localStorage.removeItem("mlb26_active_league");url.searchParams.delete("league");}
+  location.replace(url.href);
+}
+
 async function publishLeague(providedToken=""){
   configuredRoster(state.config);
   const phaseGames=rawGamesForPhase(activePhase());
@@ -1061,6 +1086,7 @@ $("#finishSeasonBtn").addEventListener("click",()=>{try{openFinishSeason()}catch
 $("#finishSeasonForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;try{button.disabled=true;await finishSeason()}catch(error){setStatus(error.message,"error")}finally{button.disabled=false}});
 $("#cancelFinishBtn").addEventListener("click",closeFinishSeason);$("#cancelFinishFooterBtn").addEventListener("click",closeFinishSeason);
 $("#newSeasonBtn").addEventListener("click",()=>{try{startNewSeason()}catch(error){setStatus(error.message,"error")}});
+$("#deleteLeagueBtn").addEventListener("click",async()=>{const button=$("#deleteLeagueBtn");try{button.disabled=true;await deleteActiveLeague()}catch(error){setStatus(error.message,"error")}finally{button.disabled=false}});
 initializeStatSorting();
 for(const id of ["battingSearch","pitchingSearch"])$("#"+id).addEventListener("input",render);
 for(const id of ["battingManagerFilter","battingTeamFilter","pitchingManagerFilter","pitchingTeamFilter"])$("#"+id).addEventListener("change",render);

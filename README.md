@@ -133,6 +133,8 @@ El Worker limita cada actualización pública a 25 candidatos y nunca confía en
 
 ## Administrar varios torneos
 
+Para borrar un torneo creado por error, selecciónalo y abre **Configuración → Eliminar liga**. Confirma el nombre e identificador y escribe la clave privada si está publicado. Se eliminan su snapshot (partidos, estadísticas e historial) y su entrada en el selector para todos; los demás torneos se conservan. Los borradores sin publicar se eliminan solamente de este navegador. La eliminación es permanente y puede tardar aproximadamente 60 segundos en propagarse.
+
 1. En **Configuración**, pulsa **Nueva temporada**.
 2. Indica un nombre. La aplicación genera un identificador estable para ese torneo sin sobrescribir los anteriores.
 3. Cambia comisionado, participantes/equipos, fecha inicial e innings reglamentarios según corresponda.
@@ -193,7 +195,7 @@ El Worker permite estas rutas:
 - `/api/history`
 - `/api/game-log`
 - `/api/leagues` (`GET` público del índice de torneos)
-- `/api/leagues/:id` (`GET` público y `POST` protegido)
+- `/api/leagues/:id` (`GET` público, `POST` y `DELETE` protegidos)
 - `/api/leagues/:id/refresh` (`POST` público con verificación oficial y configuración inmutable)
 - `/api/league` y `/api/league/refresh` (alias compatibles para el torneo `principal`)
 
