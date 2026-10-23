@@ -319,6 +319,9 @@ test("pending view works before scanning and respects excluded games",()=>{
   assert.doesNotMatch(elements.get("#scheduleContent").innerHTML,/Postemporada/);
   run('state.games.set("one",{id:"one",homeUser:"home",awayUser:"away",homeScore:2,awayScore:1,phase:"regular"});renderSchedule();');
   assert.match(elements.get("#formatSummary").textContent,/1 juego pendiente/);
+  assert.equal((elements.get("#scheduleContent").innerHTML.match(/class="game-card"/g)||[]).length,2);
+  assert.match(elements.get("#scheduleContent").innerHTML,/home · Tigers · 1 pendiente/);
+  assert.match(elements.get("#scheduleContent").innerHTML,/away · Dodgers · 1 pendiente/);
   run('state.config.corrections=[{phase:"regular",type:"exclude",gameKey:"one"}];renderSchedule();');
   assert.match(elements.get("#formatSummary").textContent,/2 juegos pendientes/);
 });

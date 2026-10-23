@@ -4,17 +4,29 @@ import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseaso
 
 const format={gamesPerOpponent:2,qualifierCount:4,postseasonBestOf:3,finalBestOf:5};
 const participants=["A","B","C","D"].map(username=>({username,team:"Dodgers"}));
-test("pending groups show the busiest team first without repeating a pairing",()=>{
-  const people=["Gaboandres20","tributo-cano","BoweMio","Angelotti0611","daddy_champagnee"].map(username=>({username,team:"Dodgers"}));
+test("pending groups show every participant's full schedule and keep the busiest first",()=>{
+  const people=["Gaboandres20","tributo-cano","BoweMio","Angelotti0611","daddy_champagnee","SinJuegos"].map(username=>({username,team:"Dodgers"}));
   const schedule=regularSchedule(people,[],1);
   for(const pair of schedule.pairs)pair.remaining=0;
   for(const [a,b] of [[0,1],[0,2],[3,4]])schedule.pairs.find(pair=>pair.a===people[a]&&pair.b===people[b]).remaining=1;
   const groups=pendingMatchupGroups(schedule);
-  assert.deepEqual(groups.map(group=>[group.team.username,group.team.remaining]),[["Gaboandres20",2],["Angelotti0611",1]]);
+  assert.deepEqual(groups.map(group=>[group.team.username,group.team.remaining]),[["Gaboandres20",2],["Angelotti0611",1],["BoweMio",1],["daddy_champagnee",1],["tributo-cano",1],["SinJuegos",0]]);
   assert.deepEqual(groups[0].opponents.map(item=>item.participant.username),["BoweMio","tributo-cano"]);
-  assert.equal(groups.reduce((sum,group)=>sum+group.opponents.length,0),3);
+  assert.equal(groups.reduce((sum,group)=>sum+group.opponents.length,0),6);
+  assert.deepEqual(groups.find(group=>group.team.username==="BoweMio").opponents.map(item=>item.participant.username),["Gaboandres20"]);
+  assert.deepEqual(groups.find(group=>group.team.username==="SinJuegos").opponents,[]);
   for(const pair of schedule.pairs)pair.remaining=0;
   assert.deepEqual(pendingMatchupGroups(schedule),[]);
+});
+
+test("participant cards count repeated pending games without doubling the league total",()=>{
+  const schedule=regularSchedule(participants,[game(1,"A","B")],2);
+  const groups=pendingMatchupGroups(schedule);
+  assert.equal(schedule.remaining,11);
+  assert.equal(groups.reduce((sum,group)=>sum+group.team.remaining,0),22);
+  assert.equal(groups.find(group=>group.team.username==="A").team.remaining,5);
+  assert.equal(groups.find(group=>group.team.username==="A").opponents.find(item=>item.participant.username==="B").remaining,1);
+  assert.equal(groups.find(group=>group.team.username==="C").opponents.find(item=>item.participant.username==="D").remaining,2);
 });
 function game(id,homeUser,awayUser,homeScore=2,awayScore=1){
   return {id,uuid:String(id),homeUser,awayUser,homeScore,awayScore,date:`2026-09-${String(id).padStart(2,"0")}T12:00:00Z`};

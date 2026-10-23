@@ -28,7 +28,7 @@ import {
 } from "./src/league-core.js?v=4.5.1";
 
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
-import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.5.2";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.6.1";
 import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
 import { qualificationCalculator } from "./src/calculator.js?v=4.6.0";
 
@@ -999,7 +999,10 @@ function renderSchedule(){
     const name=p=>`${esc(p.username)} · ${esc(p.team||"")}`;
     const groups=pendingMatchupGroups(schedule);
     $("#formatSummary").textContent=`${schedule.remaining} ${schedule.remaining===1?"juego pendiente":"juegos pendientes"} de ronda regular`;
-    $("#scheduleContent").innerHTML=groups.length?`<div class="game-list">${groups.map(({team,opponents})=>`<article class="game-card"><div><strong>${name(team)} · ${team.remaining} ${team.remaining===1?"pendiente":"pendientes"}</strong><ul>${opponents.map(({participant,remaining})=>`<li>${name(participant)}${remaining>1?` · ${remaining} juegos`:""}</li>`).join("")}</ul></div></article>`).join("")}</div>`:'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
+    $("#scheduleContent").innerHTML=groups.length?`<div class="game-list">${groups.map(({team,opponents})=>{
+      const opponentsHtml=opponents.length?`<ul>${opponents.map(({participant,remaining})=>`<li>${name(participant)}${remaining>1?` · ${remaining} juegos`:""}</li>`).join("")}</ul>`:'<p class="meta">Sin juegos pendientes.</p>';
+      return `<article class="game-card"><div><strong>${name(team)} · ${team.remaining} ${team.remaining===1?"pendiente":"pendientes"}</strong>${opponentsHtml}</div></article>`;
+    }).join("")}</div>`:'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
     return;
   }
   const rounds=pendingPostseasonRounds(postseasonSchedule(state.config.postseasonQualifiers||[],correctedGamesForPhase("postseason"),format));
