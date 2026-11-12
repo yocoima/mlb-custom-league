@@ -7,6 +7,7 @@ import * as qualification from "../src/qualification.js";
 import * as calculator from "../src/calculator.js";
 import * as core from "../src/league-core.js";
 import { sortStatRows } from "../src/update-review.js";
+import {fetchReadyGameLog} from "../src/game-log.js";
 
 function appContext() {
   const elements = new Map();
@@ -21,6 +22,7 @@ function appContext() {
     } },
     window: { prompt: () => "test-token" }
   });
+  context.fetchReadyGameLog=url=>fetchReadyGameLog(url,{fetchImpl:context.fetch,sleep:async()=>{}});
   const source = readFileSync(new URL("../app.js", import.meta.url), "utf8")
     .replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm, "")
     .split('$("#settingsForm").addEventListener')[0];
@@ -182,6 +184,28 @@ function setupScan(run){
     scanSession.startedAt=parseShowDate("09/24/2026 10:00:00").getTime();
   `);
 }
+
+test("discovery tries the opponent record after an HTTP 200 username error",async()=>{
+  const {run,context}=appContext();setupScan(run);
+  const called=[];
+  context.fetch=async url=>{
+    const username=new URL(url).searchParams.get("username");called.push(username);
+    return new Response(JSON.stringify(username==="home"?{error:"Username and platform do not match the game record."}:{game:[["line_score",{game_mode:"LEAGUE",game_uuid:"recovered",innings:5,home_runs:2,away_runs:1,home_display_result:"W",away_display_result:"L"}]]}));
+  };
+  await run("discoverLeague()");
+  assert.deepEqual(called,["home","away"]);
+  assert.equal(run('state.games.has("uuid:recovered")'),true);
+});
+
+test("partial refresh retains warnings rather than falsely reporting fully up to date",async()=>{
+  const {run,context}=appContext();setupScan(run);
+  const current=JSON.parse(run("JSON.stringify(publicSnapshot())"));
+  context.fetch=async()=>({ok:true,json:async()=>({...current,refresh:{added:0}})});
+  run('state.warnings=["Game Log pendiente"];setStatus=text=>globalThis.lastStatus=text;');
+  await run("refreshSharedLeague()");
+  assert.equal(run('state.warnings.includes("Game Log pendiente")'),true);
+  assert.match(run("lastStatus"),/Actualización parcial/);
+});
 
 test("stable discards are remembered, avoid repeated logs, and full scan revisits them",async()=>{
   const {run}=appContext();setupScan(run);

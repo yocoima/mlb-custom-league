@@ -24,6 +24,22 @@ function snapshot(){
   };
 }
 
+test("game-log proxy never caches a semantic API error",async t=>{
+  t.mock.method(globalThis,"fetch",async(url,options)=>{
+    assert.equal(options.cache,"no-store");
+    return new Response(JSON.stringify({error:"Username and platform do not match the game record."}));
+  });
+  const response=await worker.fetch(new Request("https://worker.example/api/game-log?id=1&username=friend&platform=psn"),{});
+  assert.equal(response.status,502);
+  assert.notEqual(response.headers.get("Cache-Control"),"public, max-age=86400");
+});
+
+test("game-log proxy returns valid logs without a browser cache",async t=>{
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({game:[["line_score",{game_uuid:"valid"}]]})));
+  const response=await worker.fetch(new Request("https://worker.example/api/game-log?id=1&username=friend&platform=psn"),{});
+  assert.equal(response.status,200);assert.equal(response.headers.get("Cache-Control"),"no-store");
+});
+
 test("DELETE protege la liga y elimina solamente el torneo seleccionado",async()=>{
   const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"};
   for(const id of ["liga-anti-hackers","anti-hacks"]){
@@ -358,6 +374,25 @@ function postseasonGameLog(createdAt="08/28/2026 02:00:00"){
     ["box_score",[]]
   ]};
 }
+
+test("postseason refresh falls back to the opponent log on HTTP 200 API errors",async t=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();
+  current.publishedAt="same";current.config.phase="postseason";current.config.postseasonQualifiers=["commissioner","friend"];
+  current.config.regularSeason={closedAt:"2026-08-27T00:00:00.000Z",qualifiers:current.config.postseasonQualifiers,stats:current.stats};
+  await kv.put("league:copa",JSON.stringify(current));
+  const incoming=postseasonCandidate(current);
+  incoming.games.at(-1).apiRecords.push({id:"3",username:"friend",platform:"psn"});
+  const calls=[];
+  t.mock.method(globalThis,"fetch",async(url,options)=>{
+    assert.equal(options.cache,"no-store");
+    const username=new URL(url).searchParams.get("username");calls.push(username);
+    return new Response(JSON.stringify(username==="commissioner"?{error:"Username and platform do not match the game record."}:postseasonGameLog()));
+  });
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/copa/refresh",{method:"POST",body:JSON.stringify(incoming)}),env);
+  const saved=await response.json();
+  assert.equal(saved.refresh.added,1);assert.deepEqual(calls,["commissioner","friend"]);
+  assert.equal(saved.games.at(-1).id,"3");assert.equal(saved.games.at(-1).phase,"postseason");
+});
 
 test("postemporada rechaza juegos anteriores al cierre de la ronda regular",async t=>{
   const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();

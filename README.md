@@ -131,6 +131,8 @@ Cuando haya partidos nuevos, cualquier amigo puede pulsar **Actualizar liga**. N
 
 El Worker limita cada actualización pública a 25 candidatos y nunca confía en el marcador ni en las estadísticas enviados por el navegador. Verifica modo `LEAGUE`, UUID, roster, equipos, identidades, fecha, innings y finalización contra la API oficial antes de escribir en KV.
 
+Las consultas de Game Log comprueban el contenido además del estado HTTP: un error con HTTP 200 no interrumpe la búsqueda del registro del rival. Las respuestas `pending`/HTTP 202 se reintentan hasta tres veces respetando una espera de entre 1 y 5 segundos. Estas consultas no usan caché para evitar conservar errores o registros todavía en preparación. Si quedan incidencias, la actualización muestra sus advertencias en lugar de informar que todo está al día.
+
 ## Administrar varios torneos
 
 Para borrar un torneo creado por error, selecciónalo y abre **Configuración → Eliminar liga**. Confirma el nombre e identificador y escribe la clave privada si está publicado. Se eliminan su snapshot (partidos, estadísticas e historial) y su entrada en el selector para todos; los demás torneos se conservan. Los borradores sin publicar se eliminan solamente de este navegador. La eliminación es permanente y puede tardar aproximadamente 60 segundos en propagarse.

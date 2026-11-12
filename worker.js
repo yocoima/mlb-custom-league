@@ -1,4 +1,5 @@
 import { tournamentFormat } from "./src/tournament-format.js";
+import {fetchReadyGameLog} from "./src/game-log.js";
 import {cleanDisplayName,sameText,gameParts,isOnOrAfterStartDate,postseasonDateAllowed,excludedCorrectionKeys,isCompatibleWithRegulationInnings,isFormallyCompletedGame,addGameStats} from "./src/league-core.js";
 
 const API_ORIGIN="https://mlb26.theshow.com";
@@ -79,7 +80,18 @@ async function championHall(env){
 }
 async function claimedGameUuids(env,currentId){const index=await leagueIndex(env),ids=new Set(index.leagues.map(item=>item.id).filter(id=>id&&id!==currentId));if(currentId!==DEFAULT_LEAGUE_ID&&await env.LEAGUE_STORE.get(LEGACY_LEAGUE_KEY))ids.add(DEFAULT_LEAGUE_ID);const claimed=new Set();for(const id of ids){const snapshot=await getLeague(env,id);for(const game of activeGames(snapshot)){const uuid=cleanDisplayName(game.uuid);if(uuid)claimed.add(uuid);}}return claimed;}
 function phaseDateAllowed(lineScore,config,games){return phaseName(config?.phase)!=="postseason"||postseasonDateAllowed(lineScore?.created_at,config?.regularSeason,games);}
-async function officialGameLog(records,config,games,allowHistoricalUsername=false){for(const record of records.slice(0,4)){if(!/^\d+$/.test(String(record?.id||""))||(!rosterHas(config,record?.username)&&!allowHistoricalUsername))continue;const url=new URL(`${API_ORIGIN}/apis/game_log.json`);url.searchParams.set("id",String(record.id));url.searchParams.set("username",cleanDisplayName(record.username));url.searchParams.set("platform","psn");try{const response=await fetch(url.toString(),{headers:{Accept:"application/json"},cf:{cacheEverything:true,cacheTtl:31536000}});if(response.ok){const payload=await response.json(),lineScore=gameParts(payload).lineScore;if(lineScore&&phaseDateAllowed(lineScore,config,games))return {payload,record};}}catch{}}return null;}
+async function officialGameLog(records,config,games,allowHistoricalUsername=false){
+  for(const record of records.slice(0,4)){
+    if(!/^\d+$/.test(String(record?.id||""))||(!rosterHas(config,record?.username)&&!allowHistoricalUsername))continue;
+    const url=new URL(`${API_ORIGIN}/apis/game_log.json`);
+    url.searchParams.set("id",String(record.id));url.searchParams.set("username",cleanDisplayName(record.username));url.searchParams.set("platform","psn");
+    try{
+      const payload=await fetchReadyGameLog(url.toString()),lineScore=gameParts(payload).lineScore;
+      if(phaseDateAllowed(lineScore,config,games))return {payload,record};
+    }catch{}
+  }
+  return null;
+}
 async function refreshLeague(incoming,current,save,claimedUuids=new Set()){
   current=reconcileSnapshotRoster(current);
   if(!validSnapshot(incoming)||!validSnapshot(current))return json({error:"Invalid league snapshot"},400);if(current.config?.finalizedAt)return json({error:"League is finalized"},409);if(incoming.publishedAt&&current.publishedAt&&incoming.publishedAt!==current.publishedAt)return json({error:"League changed during refresh; reload and try again"},409);
@@ -100,7 +112,7 @@ export default {async fetch(request,env={}){if(request.method==="OPTIONS")return
   if(url.pathname==="/api/league/refresh"){if(request.method!=="POST")return json({error:"Method not allowed"},405,{Allow:"POST, OPTIONS"});const current=await getLeague(env,DEFAULT_LEAGUE_ID);if(!current)return json({error:"League has not been published"},404);let incoming;try{incoming=await request.json()}catch{return json({error:"Invalid JSON"},400)}return refreshLeague(incoming,current,snapshot=>saveLeague(env,DEFAULT_LEAGUE_ID,snapshot),await claimedGameUuids(env,DEFAULT_LEAGUE_ID));}
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   if(url.pathname==="/api/history"){const username=url.searchParams.get("username")||"",platform=url.searchParams.get("platform")||"",page=Math.max(1,Math.min(200,Number(url.searchParams.get("page")||1)));if(!validUsername(username)||!PLATFORMS.has(platform))return json({error:"Invalid username/platform"},400);const upstream=new URL(`${API_ORIGIN}/apis/game_history.json`);upstream.searchParams.set("username",username);upstream.searchParams.set("platform",platform);upstream.searchParams.set("page",String(page));upstream.searchParams.set("mode","all");return proxy(upstream,60);}
-  if(url.pathname==="/api/game-log"){const id=url.searchParams.get("id")||"",username=url.searchParams.get("username")||"",platform=url.searchParams.get("platform")||"";if(!/^\d+$/.test(id)||!validUsername(username)||!PLATFORMS.has(platform))return json({error:"Invalid id/username/platform"},400);const upstream=new URL(`${API_ORIGIN}/apis/game_log.json`);upstream.searchParams.set("id",id);upstream.searchParams.set("username",username);upstream.searchParams.set("platform",platform);return proxy(upstream,86400);}
+  if(url.pathname==="/api/game-log"){const id=url.searchParams.get("id")||"",username=url.searchParams.get("username")||"",platform=url.searchParams.get("platform")||"";if(!/^\d+$/.test(id)||!validUsername(username)||!PLATFORMS.has(platform))return json({error:"Invalid id/username/platform"},400);const upstream=new URL(`${API_ORIGIN}/apis/game_log.json`);upstream.searchParams.set("id",id);upstream.searchParams.set("username",username);upstream.searchParams.set("platform",platform);return json(await fetchReadyGameLog(upstream.toString()),200,{"Cache-Control":"no-store"});}
   return json({ok:true,service:"MLB The Show 26 Custom League proxy",routes:["/api/history","/api/game-log","/api/champions","/api/leagues","/api/leagues/:id","/api/leagues/:id/refresh"]});
 }catch(error){return json({error:error?.message||"Proxy error"},502);}}};
 async function proxy(upstream,ttl){const response=await fetch(upstream.toString(),{headers:{Accept:"application/json"},cf:{cacheEverything:true,cacheTtl:ttl}});const body=await response.arrayBuffer();return new Response(body,{status:response.status,headers:cors({"Content-Type":response.headers.get("Content-Type")||"application/json","Cache-Control":`public, max-age=${ttl}`})});}

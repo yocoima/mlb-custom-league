@@ -31,6 +31,7 @@ import { sortStatRows } from "./src/update-review.js?v=4.3.0";
 import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.6.1";
 import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
 import { qualificationCalculator } from "./src/calculator.js?v=4.6.0";
+import { fetchReadyGameLog } from "./src/game-log.js?v=4.6.2";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -212,7 +213,7 @@ async function fetchHistoryPage(username,platform,page){
   // LEAGUE no es un mode documentado por SDS. Consultamos all y filtramos localmente.
   return fetchJson(apiUrl("history",{username,platform,page:String(page),mode:"all"}));
 }
-async function fetchGameLog(id,username,platform){ return fetchJson(apiUrl("game-log",{id:String(id),username,platform})); }
+async function fetchGameLog(id,username,platform){ return fetchReadyGameLog(apiUrl("game-log",{id:String(id),username,platform})); }
 
 async function loadPublishedLeague(){
   let response;
@@ -328,6 +329,7 @@ async function publishLeague(providedToken=""){
 
 async function refreshSharedLeague(){
   const submitted=[...state.games.values()];
+  const scanWarnings=[...state.warnings];
   const response=await fetch(`${leagueApiUrl()}/refresh`,{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify(publicSnapshot())});
   let result={};try{result=await response.json()}catch{}
   if(!response.ok){
@@ -337,11 +339,13 @@ async function refreshSharedLeague(){
   }
   const added=Number(result.refresh?.added||0),rejected=Number(result.refresh?.rejected||0);
   applyPublishedSnapshot(result);
+  for(const message of scanWarnings)warn(message);
   for(const game of submitted)if(!state.games.has(gameKey(game)))recordDiscard(game,"Rechazado por validación oficial del servidor o asignado a otro torneo",true,true);
   const crossLeagueRejected=Number(result.refresh?.crossLeagueRejected||0);
   if(crossLeagueRejected)warn(`${crossLeagueRejected} partido${crossLeagueRejected===1?"":"s"} ya pertenec${crossLeagueRejected===1?"e":"en"} a otro torneo y no se ${crossLeagueRejected===1?"agregó":"agregaron"}.`);
   if(rejected-crossLeagueRejected>0)warn(`${rejected-crossLeagueRejected} partidos candidatos no superaron la validación oficial del servidor.`);
-  setStatus(added?`Liga pública actualizada: ${added} partido${added===1?"":"s"} nuevo${added===1?"":"s"} y estadísticas recalculadas.`:"La liga pública ya estaba al día.","success");
+  const partial=scanWarnings.length>0||rejected>0;
+  setStatus(added?`Liga pública actualizada: ${added} partido${added===1?"":"s"} nuevo${added===1?"":"s"} y estadísticas recalculadas.${partial?" Hay incidencias pendientes; revisa las advertencias y los descartados.":""}`:partial?"Actualización parcial: no se agregaron juegos. Revisa las advertencias y los descartados.":"La liga pública ya estaba al día.",partial?"":"success");
 }
 
 async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}, since = 0) {
