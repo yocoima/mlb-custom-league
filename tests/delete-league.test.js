@@ -7,11 +7,11 @@ const source=fs.readFileSync(new URL("../app.js",import.meta.url),"utf8");
 const deletion=source.slice(source.indexOf("async function deleteActiveLeague(){"),source.indexOf("async function publishLeague("));
 function setup({confirm=true,token="secret",status=200,published=true,leagues=[{id:"wrong"},{id:"keep"}]}={}){
   const storage={config:"old",state:"old",legacy:"old",mlb26_active_league:"wrong",'mlb26_scan_v2:["wrong","season"]':"old",'mlb26_scan_v2:["keep","season"]':"keep"};
-  Object.defineProperties(storage,{removeItem:{value:key=>delete storage[key]},setItem:{value:(key,value)=>storage[key]=value}});
+  Object.defineProperties(storage,{removeItem:{value:key=>delete storage[key]},setItem:{value:(key,value)=>storage[key]=value},getItem:{value:key=>storage[key]??null}});
   const calls=[],redirects=[];
   const context=vm.createContext({
     state:{syncing:false,activeLeagueId:"wrong",config:{leagueName:"Wrong league"},publishedAt:published?"date":null,leagues},
-    window:{confirm:()=>confirm,prompt:()=>token},localStorage:storage,STORAGE_KEY:"config",STATE_KEY:"state",LEGACY_STORAGE_KEY:"legacy",URL,
+    window:{confirm:()=>confirm,prompt:()=>token},localStorage:storage,STORAGE_KEY:"config",STATE_KEY:"state",LEGACY_STORAGE_KEY:"legacy",DRAFTS_KEY:"drafts",loadDrafts:()=>JSON.parse(storage.drafts||"{}"),URL,
     location:{href:"https://example.com/?league=wrong",replace:url=>redirects.push(url)},
     leagueApiUrl:()=>"https://worker.example/api/leagues/wrong",
     fetch:async(url,options)=>{calls.push({url,...options});return {ok:status===200,status,json:async()=>({})}}
@@ -45,4 +45,11 @@ test("deleting the last unpublished draft clears its URL and does not call the s
 test("deletion cannot run during a league refresh",async()=>{
   const app=setup();app.context.state.syncing=true;await assert.rejects(app.run(),/termine/);
   assert.equal(app.calls.length,0);
+});
+
+test("deleting a draft preserves every other saved draft",async()=>{
+  const app=setup({published:false});
+  app.storage.drafts=JSON.stringify({wrong:{config:{leagueName:"Wrong"}},keep:{config:{leagueName:"Keep"}}});
+  await app.run();
+  assert.deepEqual(JSON.parse(app.storage.drafts),{keep:{config:{leagueName:"Keep"}}});
 });

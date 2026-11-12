@@ -92,6 +92,17 @@ test("POST /api/league exige la clave privada",async()=>{
   assert.equal(response.status,401);
 });
 
+test("new league creation cannot overwrite an existing tournament",async()=>{
+  const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"};
+  const request=data=>new Request("https://worker.example/api/leagues/existing",{method:"POST",headers:{Authorization:"Bearer private-token","If-None-Match":"*"},body:JSON.stringify(data)});
+  assert.equal((await worker.fetch(request(snapshot()),env)).status,200);
+  const previous=await env.LEAGUE_STORE.get("league:existing");const incoming=snapshot();incoming.config.leagueName="Replacement";
+  assert.equal((await worker.fetch(request(incoming),env)).status,409);
+  assert.equal(await env.LEAGUE_STORE.get("league:existing"),previous);
+  const preflight=await worker.fetch(new Request("https://worker.example/api/leagues/existing",{method:"OPTIONS"}),env);
+  assert.match(preflight.headers.get("Access-Control-Allow-Headers"),/If-None-Match/);
+});
+
 test("publication preserves official postseason matchups and rejects duplicate players",async()=>{
   const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"},data=snapshot();
   data.config.phase="postseason";data.config.postseasonQualifiers=["commissioner","friend"];

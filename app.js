@@ -32,15 +32,19 @@ import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseaso
 import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
 import { qualificationCalculator } from "./src/calculator.js?v=4.6.0";
 import { fetchReadyGameLog } from "./src/game-log.js?v=4.6.2";
+import {createRosterEditor,rosterToRows,rowsToRoster,fillCommissionerSelect} from "./src/roster-editor.js?v=4.7.0";
+import {createLeagueSetup} from "./src/league-setup.js?v=4.7.0";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
 const STATE_KEY = "mlb26_custom_league_state_v3";
 const LEGACY_STORAGE_KEY = "mlb26_custom_league_config_v2";
+const DRAFTS_KEY="mlb26_league_drafts_v1";
 const API_ORIGIN = "https://mlb26.theshow.com";
 const DEFAULT_PROXY_BASE = "https://mlb26-custom-league-proxy.yocoimadejesus.workers.dev";
 const CURRENT_LEAGUE_NAME = "Torneo Reclutas V2";
 let calculatorCache=null;
+let settingsRosterEditor=null,leagueSetup=null;
 
 const state = {
   config: loadConfig(),
@@ -77,11 +81,18 @@ function loadConfig(){
   }
 }
 function saveConfig(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.config)); }
+function loadDrafts(){
+  try{const drafts=JSON.parse(localStorage.getItem(DRAFTS_KEY)||"{}");return drafts&&typeof drafts==="object"&&!Array.isArray(drafts)?drafts:{};}catch{return {};}
+}
 function saveState(){
   const safe = {
     leagueId:state.activeLeagueId,participants:[...state.participants.values()], games:[...state.games.values()].map(g=>({...g,dateValue:g.dateValue?.toISOString?.()||null})), lastSync:state.lastSync,publishedAt:state.publishedAt,dataSeasonKey:state.dataSeasonKey
   };
   localStorage.setItem(STATE_KEY, JSON.stringify(safe));
+  const drafts=loadDrafts();
+  if(!state.publishedAt&&state.config.leagueId===state.activeLeagueId&&state.config.leagueName)drafts[state.activeLeagueId]=publicSnapshot();
+  else if(state.publishedAt)delete drafts[state.activeLeagueId];
+  localStorage.setItem(DRAFTS_KEY,JSON.stringify(drafts));
 }
 function loadState(){
   try{
@@ -164,7 +175,8 @@ function cleanArchivedAwards(value){
 function formToConfig(){
   let roster={};
   const raw=$("#roster").value.trim();
-  if(raw){ try{roster=JSON.parse(raw)}catch{throw new Error("El roster de la liga no es JSON válido.")} }
+  if(settingsRosterEditor)roster=rowsToRoster(settingsRosterEditor.getRows());
+  else if(raw){ try{roster=JSON.parse(raw)}catch{throw new Error("El roster de la liga no es JSON válido.")} }
   if(!roster || Array.isArray(roster) || typeof roster!=="object") throw new Error("El roster debe ser un objeto JSON usuario → equipo.");
   const config={
     leagueName:cleanDisplayName($("#leagueName").value),
@@ -207,6 +219,13 @@ function fillForm(){
   $("#username").value=state.config.username;
   $("#startDate").value=state.config.startDate||""; $("#regulationInnings").value=state.config.regulationInnings||5; $("#maxPages").value=state.config.maxPages;
   $("#roster").value=Object.keys(state.config.roster||{}).length?JSON.stringify(state.config.roster,null,2):"";
+  if(!settingsRosterEditor)settingsRosterEditor=createRosterEditor($("#settingsRoster"),{onChange:rows=>{
+    const preferred=$("#username").value;
+    $("#roster").value=JSON.stringify(Object.fromEntries(rows.map((row,index)=>[row.username.trim()||`__blank_${index}`,row.extra?{...row.extra,username:row.username.trim(),team:row.team}:row.team])));
+    fillCommissionerSelect($("#username"),rows,preferred);
+  }});
+  settingsRosterEditor.setRows(rosterToRows(state.config.roster));
+  fillCommissionerSelect($("#username"),settingsRosterEditor.getRows(),state.config.username);
   fillPostseasonMatchups();
 }
 
@@ -238,7 +257,7 @@ async function loadPublishedLeague(){
     if(!state.games.size)setStatus("No se pudo conectar con la liga pública.","error");
     return;
   }
-  if(response.status===404)return;
+  if(response.status===404){const draft=loadDrafts()[state.activeLeagueId];if(draft&&validPublishedSnapshot(draft))applyPublishedSnapshot(draft);return;}
   if(!response.ok){if(!state.games.size)setStatus(`No se pudo cargar la liga pública (HTTP ${response.status}).`,"error");return;}
   const snapshot=await response.json();
   if(!validPublishedSnapshot(snapshot)){
@@ -276,6 +295,8 @@ async function loadLeagueIndex(){
     const response=await fetch(leagueIndexApiUrl(),{headers:{Accept:"application/json"},cache:"no-store"});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     const payload=await response.json();state.leagues=Array.isArray(payload.leagues)?payload.leagues:[];
+    for(const [id,draft] of Object.entries(loadDrafts()))if(!state.leagues.some(entry=>entry.id===id)&&validPublishedSnapshot(draft))state.leagues.push({id,name:draft.config.leagueName,participants:draft.participants.length,games:draft.games.length});
+    if(!state.publishedAt&&state.config.leagueId===state.activeLeagueId&&state.config.leagueName&&!state.leagues.some(entry=>entry.id===state.activeLeagueId))state.leagues.unshift({id:state.activeLeagueId,name:state.config.leagueName,participants:Object.keys(state.config.roster||{}).length,games:state.games.size});
     if(!state.leagues.some(entry=>entry.id===state.activeLeagueId)&&state.leagues.length)state.activeLeagueId=state.leagues[0].id;
     localStorage.setItem("mlb26_active_league",state.activeLeagueId);updateLeagueSelector();
     await Promise.all([loadPublishedLeague(),loadChampionHall()]);
@@ -305,6 +326,7 @@ async function deleteActiveLeague(){
     }
   }
   state.leagues=state.leagues.filter(entry=>entry.id!==id);
+  const drafts=loadDrafts();delete drafts[id];localStorage.setItem(DRAFTS_KEY,JSON.stringify(drafts));
   for(const key of [STORAGE_KEY,STATE_KEY,LEGACY_STORAGE_KEY])localStorage.removeItem(key);
   for(const key of Object.keys(localStorage))if(key.startsWith("mlb26_scan_v2:")&&key.slice("mlb26_scan_v2:".length).startsWith(JSON.stringify([id]).slice(0,-1)+","))localStorage.removeItem(key);
   const next=state.leagues[0]?.id;
@@ -466,18 +488,34 @@ function refreshRegularArchiveDerived(){
   state.config.regularSeason={...state.config.regularSeason,standings:calculateStandings(games,participants),awards:tournamentAwards(stats,qualificationForPhase("regular",games))};
 }
 
+async function createNewLeague(config,{publish=false,token=""}={}){
+  if(state.syncing)throw new Error("Espera a que termine la actualización de la liga.");
+  const slug=slugifyLeague(config.leagueName);if(!slug)throw new Error("El nombre no permite crear un identificador válido.");
+  let id=slug,suffix=2;while(state.leagues.some(entry=>entry.id===id))id=`${slug.slice(0,58)}-${suffix++}`;
+  const prepared={...defaultConfig(),...config,leagueId:id};
+  const participants=[...configuredRoster(prepared).values()];
+  const snapshot={version:1,config:prepared,participants,games:[],stats:serializeStats(createStatAccumulator()),lastSync:null,publishedAt:null};
+  if(publish){
+    const response=await fetch(`${DEFAULT_PROXY_BASE}/api/leagues/${encodeURIComponent(id)}`,{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json",Authorization:`Bearer ${token}`,"If-None-Match":"*"},body:JSON.stringify(snapshot)});
+    let result={};try{result=await response.json()}catch{}
+    if(!response.ok){
+      if(response.status===401)throw new Error("Clave privada incorrecta. Corrígela o guarda un borrador.");
+      if(response.status===409)throw new Error("Ya existe una liga con ese identificador. Cambia el nombre e inténtalo otra vez.");
+      throw new Error(result.error||`No se pudo crear la liga (HTTP ${response.status}).`);
+    }
+    snapshot.publishedAt=result.publishedAt||new Date().toISOString();
+  }
+  state.activeLeagueId=id;localStorage.setItem("mlb26_active_league",id);
+  const url=new URL(location.href);url.searchParams.set("league",id);history.replaceState(null,"",url);
+  state.leagues.unshift({id,name:config.leagueName,commissioner:config.username,phase:"regular",participants:participants.length,games:0,updatedAt:snapshot.publishedAt});
+  applyPublishedSnapshot(snapshot);updateLeagueSelector();
+  document.querySelector('[data-tab="standings"]').click();
+  setStatus(publish?"Liga creada y publicada. Ya puedes usar Actualizar liga para buscar sus partidos.":"Borrador guardado en este navegador. Revisa Configuración y usa Publicar liga cuando quieras compartirlo.","success");
+}
 function startNewSeason(){
-  const name=cleanDisplayName(window.prompt("Nombre del nuevo torneo:"));if(!name)return;
-  if(reservedLeagueName(name))throw new Error("El nombre debe identificar el torneo; no puede ser 'principal' ni 'Torneo principal'.");
-  let id=slugifyLeague(name);if(!id)throw new Error("El nombre no permite crear un identificador válido.");
-  let suffix=2;while(state.leagues.some(entry=>entry.id===id))id=`${slugifyLeague(name).slice(0,58)}-${suffix++}`;
-  state.activeLeagueId=id;localStorage.setItem("mlb26_active_league",id);const url=new URL(location.href);url.searchParams.set("league",id);history.replaceState(null,"",url);
-  state.config={...state.config,leagueId:id,leagueName:name,seedGameId:"",startDate:"",finalizedAt:null,phase:"regular",postseasonQualifiers:[],postseasonMatchups:null,regularSeason:null,corrections:[],champions:[]};
-  state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.publishedAt=null;state.dataSeasonKey=null;state.warnings=[];
-  state.participants.clear();state.leagues.unshift({id,name,phase:"regular",participants:0,games:0});saveConfig();saveState();fillForm();render();updateLeagueSelector();
-  document.querySelector('[data-tab="settings"]').click();
-  $("#startDate").focus();
-  setStatus("Nuevo torneo preparado sin reemplazar los anteriores. Revisa participantes, fecha e innings antes de guardarlo y publicarlo.","success");
+  if(state.syncing)throw new Error("Espera a que termine la actualización de la liga.");
+  if(!leagueSetup)leagueSetup=createLeagueSetup({dialog:$("#leagueSetupDialog"),onCreate:createNewLeague});
+  leagueSetup.open();
 }
 
 function rosterMemberForName(name,roster){
@@ -1189,6 +1227,9 @@ $("#correctionHistory").addEventListener("click",async event=>{const id=event.ta
 $("#finishSeasonBtn").addEventListener("click",()=>{try{openFinishSeason()}catch(error){setStatus(error.message,"error")}});
 $("#finishSeasonForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;try{button.disabled=true;await finishSeason()}catch(error){setStatus(error.message,"error")}finally{button.disabled=false}});
 $("#cancelFinishBtn").addEventListener("click",closeFinishSeason);$("#cancelFinishFooterBtn").addEventListener("click",closeFinishSeason);
+$("#newLeagueQuickBtn").addEventListener("click",()=>{try{startNewSeason()}catch(error){setStatus(error.message,"error")}});
+$("#settingsAddParticipant").addEventListener("click",()=>{try{settingsRosterEditor.add()}catch(error){setStatus(error.message,"error")}});
+$("#applyRosterJson").addEventListener("click",()=>{try{const rows=rosterToRows(JSON.parse($("#rosterImportText").value));settingsRosterEditor.setRows(rows);setStatus("Lista importada. Revisa participantes, equipos y comisionado antes de guardar.")}catch(error){setStatus(error.message,"error")}});
 $("#newSeasonBtn").addEventListener("click",()=>{try{startNewSeason()}catch(error){setStatus(error.message,"error")}});
 $("#deleteLeagueBtn").addEventListener("click",async()=>{const button=$("#deleteLeagueBtn");try{button.disabled=true;await deleteActiveLeague()}catch(error){setStatus(error.message,"error")}finally{button.disabled=false}});
 initializeStatSorting();

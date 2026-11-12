@@ -67,6 +67,14 @@ test("calculator tolerates empty startup and official archived qualifications",(
   assert.match(elements.get("#calculatorContent").innerHTML,/Eliminado/);
 });
 
+test("failed creation leaves the current league and its games untouched",async()=>{
+  const {run,context}=appContext();
+  const before=run("JSON.stringify(publicSnapshot())");
+  context.fetch=async()=>({ok:false,status:401,json:async()=>({error:"Unauthorized"})});
+  await assert.rejects(run('createNewLeague({leagueName:"Another league",username:"home",startDate:"2026-11-12",regulationInnings:9,roster:{home:"Rays",away:"Tigers"}},{publish:true,token:"wrong"})'),/incorrecta/);
+  assert.equal(run("JSON.stringify(publicSnapshot())"),before);
+});
+
 test("publication warns when an older Worker drops the tournament format",async()=>{
   const {run,context,elements}=appContext();
   run(`

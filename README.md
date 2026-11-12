@@ -44,7 +44,11 @@ La API pública no expone `league_id`, nombre de liga ni roster oficial. Para ev
 
 Si dos ligas comparten exactamente participantes, equipos y fechas, la API pública no permite distinguirlas automáticamente. Por eso cada torneo requiere una fecha inicial y un roster correcto; ya no se solicita un Game ID semilla.
 
-### Ejemplo de roster
+### Participantes sin escribir JSON
+
+La interfaz utiliza filas editables de **usuario PSN y equipo MLB**, con botones para agregar y quitar participantes. El comisionado se selecciona de esa lista; su equipo se obtiene automáticamente. Los alias existentes se conservan al editar. También se puede importar una lista JSON desde una opción avanzada de Configuración, sin que sea necesaria para crear ligas.
+
+### Ejemplo de roster para importación avanzada
 
 ```json
 {
@@ -123,9 +127,9 @@ npm run deploy:worker
 
 En la aplicación:
 
-1. configura el torneo y guarda;
-2. pulsa **Actualizar liga** para obtener los juegos y estadísticas disponibles;
-3. pulsa **Publicar liga** e introduce la clave privada.
+1. pulsa **Nueva liga** y completa el asistente;
+2. revisa los participantes y usa **Crear y publicar** con la clave privada;
+3. pulsa **Actualizar liga** para obtener los juegos y estadísticas disponibles.
 
 Cuando haya partidos nuevos, cualquier amigo puede pulsar **Actualizar liga**. No necesita la clave ni modificar Configuración: la actualización aceptada queda guardada para todos. **Recargar estadísticas** solo reintenta Game Logs que hayan fallado en el navegador actual; normalmente no es necesario porque **Actualizar liga** ya procesa los datos nuevos.
 
@@ -137,10 +141,17 @@ Las consultas de Game Log comprueban el contenido además del estado HTTP: un er
 
 Para borrar un torneo creado por error, selecciónalo y abre **Configuración → Eliminar liga**. Confirma el nombre e identificador y escribe la clave privada si está publicado. Se eliminan su snapshot (partidos, estadísticas e historial) y su entrada en el selector para todos; los demás torneos se conservan. Los borradores sin publicar se eliminan solamente de este navegador. La eliminación es permanente y puede tardar aproximadamente 60 segundos en propagarse.
 
-1. En **Configuración**, pulsa **Nueva temporada**.
-2. Indica un nombre. La aplicación genera un identificador estable para ese torneo sin sobrescribir los anteriores.
-3. Cambia comisionado, participantes/equipos, fecha inicial e innings reglamentarios según corresponda.
-4. Guarda y pulsa **Publicar liga** con la clave privada.
+1. Pulsa **Nueva liga** junto al selector de torneos (o **Crear otra liga** en Configuración).
+2. Completa los tres pasos: datos, participantes y revisión.
+3. Usa **Crear y publicar** con la clave privada, o **Guardar borrador** para continuar después.
+
+Cada liga comienza con participantes y resultados independientes. Cancelar el asistente o fallar la publicación conserva la liga que estaba abierta. Los borradores se guardan por separado en este navegador y se mantienen al recargar o cambiar de torneo. Una creación con `If-None-Match: *` no puede reemplazar un torneo publicado que ya exista.
+
+### Importar participantes desde una foto
+
+En el paso **Participantes**, selecciona una foto o captura JPG, PNG o WebP de hasta 15 MB. La lectura prepara filas con los usuarios y sus equipos; cuando puede leer la cuenta de la cabecera y su equipo, también los incorpora y propone esa cuenta como comisionado. Esa propuesta debe confirmarse: la cuenta visible puede no ser el administrador real. Revisa especialmente guiones, números y letras parecidas; puedes corregir, agregar o quitar filas antes de continuar.
+
+La foto se procesa en el navegador, sin enviarla al Worker ni guardarla en la liga. El lector descarga sus componentes OCR al utilizarlo; requiere conexión y puede tardar más la primera vez. Si una foto no se lee con claridad, la lista manual sigue disponible. La implementación usa [Tesseract.js 6.0.1](https://github.com/naptha/tesseract.js/blob/v6.0.1/docs/api.md), con lectura por posición para mantener cada equipo junto a su usuario. No se deducen la fecha de inicio, las entradas ni las reglas del torneo de la imagen: se eligen en el primer paso.
 
 El selector **Torneo** permite cambiar entre torneos activos o finalizados. También se puede compartir un torneo específico con `?league=identificador`. La liga publicada antes de esta actualización se conserva automáticamente como `principal`; no hay que volver a cargarla.
 
@@ -184,11 +195,10 @@ Cada ajuste exige la clave privada, guarda fecha y motivo, y se publica para tod
 
 ## Iniciar un torneo nuevo
 
-1. En **Configuración**, pulsa **Nueva temporada**.
-2. Introduce el nombre del nuevo torneo.
-3. Cambia el comisionado, participantes/equipos, fecha inicial e innings reglamentarios.
-4. Guarda la configuración.
-5. Pulsa **Publicar liga** e introduce la clave privada.
+1. Pulsa **Nueva liga**.
+2. Introduce nombre, fecha inicial, entradas y formato.
+3. Agrega participantes en la tabla o desde una foto y confirma el comisionado.
+4. Revisa el resumen, confirma la lista y pulsa **Crear y publicar** con la clave privada. También puedes guardar un borrador.
 
 La publicación inicial puede tener cero juegos. Desde ese momento todos reciben la nueva configuración y cualquiera puede incorporar los primeros resultados con **Actualizar liga**. Los torneos anteriores permanecen disponibles en el selector y en el historial general.
 
