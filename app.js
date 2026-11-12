@@ -28,7 +28,7 @@ import {
 } from "./src/league-core.js?v=4.5.1";
 
 import { sortStatRows } from "./src/update-review.js?v=4.3.0";
-import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "./src/tournament-format.js?v=4.6.1";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups, validatePostseasonMatchups } from "./src/tournament-format.js?v=4.6.3";
 import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
 import { qualificationCalculator } from "./src/calculator.js?v=4.6.0";
 import { fetchReadyGameLog } from "./src/game-log.js?v=4.6.2";
@@ -60,7 +60,7 @@ const state = {
 };
 
 function defaultConfig(){
-  return { leagueId:"",leagueName:"", username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[], finalizedAt:null,phase:"regular",postseasonQualifiers:[],regularSeason:null,corrections:[] };
+  return { leagueId:"",leagueName:"", username:"", platform:"psn", seedGameId:"", myTeam:"", startDate:"", regulationInnings:5, maxPages:20, proxyBase:DEFAULT_PROXY_BASE, roster:{}, champions:[], finalizedAt:null,phase:"regular",postseasonQualifiers:[],postseasonMatchups:null,regularSeason:null,corrections:[] };
 }
 function loadConfigV3Only(){
   try { return {...defaultConfig(), ...JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")}; }
@@ -174,7 +174,7 @@ function formToConfig(){
     maxPages:Math.min(100,Math.max(1,Number($("#maxPages").value)||20)),
     proxyBase:DEFAULT_PROXY_BASE,roster,champions:state.config.champions||[],leagueId:state.activeLeagueId,
     tournamentFormat:$("#formatEnabled").checked?tournamentFormat({gamesPerOpponent:$("#gamesPerOpponent").value,qualifierCount:$("#qualifierCount").value,postseasonBestOf:$("#postseasonBestOf").value,finalBestOf:$("#finalBestOf").value}):null,
-    finalizedAt:state.config.finalizedAt||null,phase:activePhase(),postseasonQualifiers:state.config.postseasonQualifiers||[],regularSeason:state.config.regularSeason||null,corrections:state.config.corrections||[]
+    finalizedAt:state.config.finalizedAt||null,phase:activePhase(),postseasonQualifiers:state.config.postseasonQualifiers||[],postseasonMatchups:readPostseasonMatchups(),regularSeason:state.config.regularSeason||null,corrections:state.config.corrections||[]
   };
   if(!config.leagueName)throw new Error("Indica el nombre del torneo.");
   if(reservedLeagueName(config.leagueName))throw new Error("Asigna un nombre propio al torneo; 'principal' es solamente un identificador interno.");
@@ -182,6 +182,22 @@ function formToConfig(){
   if(config.tournamentFormat?.qualifierCount>configured.size)throw new Error("Los clasificados no pueden superar la cantidad de participantes del roster.");
   if(config.regularSeason&&config.tournamentFormat&&config.tournamentFormat.qualifierCount!==config.postseasonQualifiers.length)throw new Error("La cantidad debe coincidir con los clasificados de la ronda ya cerrada.");
   return config;
+}
+function readPostseasonMatchups(){
+  const qualifiers=state.config.postseasonQualifiers||[];
+  if(!qualifiers.length)return null;
+  const rows=[...document.querySelectorAll("#postseasonMatchupsFields [data-matchup]")];
+  if(!rows.length)return state.config.postseasonMatchups||null;
+  return validatePostseasonMatchups(qualifiers,rows.map(row=>[...row.querySelectorAll("select")].map(select=>select.value)));
+}
+function fillPostseasonMatchups(){
+  const qualifiers=state.config.postseasonQualifiers||[],format=state.config.tournamentFormat;
+  const visible=qualifiers.length>0&&format&&qualifiers.length===format.qualifierCount;
+  $("#postseasonMatchupsSettings").classList.toggle("hidden",!visible);
+  if(!visible){$("#postseasonMatchupsFields").innerHTML="";return;}
+  const initial=postseasonSchedule(qualifiers,[],format,state.config.postseasonMatchups)[0];
+  $("#postseasonSeriesRule").textContent=`Series al mejor de ${format.postseasonBestOf}: avanza quien gane ${(format.postseasonBestOf+1)/2}. Final al mejor de ${format.finalBestOf}: gana quien alcance ${(format.finalBestOf+1)/2} victorias.`;
+  $("#postseasonMatchupsFields").innerHTML=initial.series.map((match,index)=>`<div class="two" data-matchup="${index}">${[match.a,match.b].map((participant,side)=>`<label>Cruce ${index+1} · Participante ${side+1}<select>${qualifiers.map(username=>`<option value="${esc(username)}"${sameText(username,participant.username)?" selected":""}>${esc(username)}</option>`).join("")}</select></label>`).join("")}</div>`).join("");
 }
 function fillForm(){
   const format=state.config.tournamentFormat;
@@ -191,6 +207,7 @@ function fillForm(){
   $("#username").value=state.config.username;
   $("#startDate").value=state.config.startDate||""; $("#regulationInnings").value=state.config.regulationInnings||5; $("#maxPages").value=state.config.maxPages;
   $("#roster").value=Object.keys(state.config.roster||{}).length?JSON.stringify(state.config.roster,null,2):"";
+  fillPostseasonMatchups();
 }
 
 function apiUrl(kind, params){
@@ -455,7 +472,7 @@ function startNewSeason(){
   let id=slugifyLeague(name);if(!id)throw new Error("El nombre no permite crear un identificador válido.");
   let suffix=2;while(state.leagues.some(entry=>entry.id===id))id=`${slugifyLeague(name).slice(0,58)}-${suffix++}`;
   state.activeLeagueId=id;localStorage.setItem("mlb26_active_league",id);const url=new URL(location.href);url.searchParams.set("league",id);history.replaceState(null,"",url);
-  state.config={...state.config,leagueId:id,leagueName:name,seedGameId:"",startDate:"",finalizedAt:null,phase:"regular",postseasonQualifiers:[],regularSeason:null,corrections:[],champions:[]};
+  state.config={...state.config,leagueId:id,leagueName:name,seedGameId:"",startDate:"",finalizedAt:null,phase:"regular",postseasonQualifiers:[],postseasonMatchups:null,regularSeason:null,corrections:[],champions:[]};
   state.games.clear();state.stats=createStatAccumulator();state.lastSync=null;state.publishedAt=null;state.dataSeasonKey=null;state.warnings=[];
   state.participants.clear();state.leagues.unshift({id,name,phase:"regular",participants:0,games:0});saveConfig();saveState();fillForm();render();updateLeagueSelector();
   document.querySelector('[data-tab="settings"]').click();
@@ -1009,7 +1026,7 @@ function renderSchedule(){
     }).join("")}</div>`:'<p class="empty">No quedan juegos pendientes en la ronda regular.</p>';
     return;
   }
-  const rounds=pendingPostseasonRounds(postseasonSchedule(state.config.postseasonQualifiers||[],correctedGamesForPhase("postseason"),format));
+  const rounds=pendingPostseasonRounds(postseasonSchedule(state.config.postseasonQualifiers||[],correctedGamesForPhase("postseason"),format,state.config.postseasonMatchups));
   const pending=rounds.reduce((total,round)=>total+round.series.length,0);
   $("#formatSummary").textContent=`${pending} ${pending===1?"serie definida pendiente":"series definidas pendientes"} en postemporada`;
   $("#scheduleContent").innerHTML=rounds.length?rounds.map(round=>`<h3>${round.name}</h3><div class="game-list">${round.series.map(match=>`<article class="game-card"><div>${esc(match.a.username)}<br>${esc(match.b.username)}<div class="meta">Al mejor de ${match.bestOf} · gana con ${match.needed} victorias</div></div><div><strong>${match.wins.join(" – ")}</strong><div class="meta">${match.remaining} ${match.remaining===1?"juego mínimo pendiente":"juegos mínimos pendientes"} · hasta ${match.possible}</div></div></article>`).join("")}</div>`).join(""):'<p class="empty">No hay partidos pendientes con ambos rivales definidos.</p>';
@@ -1090,7 +1107,7 @@ function renderCalculator(){
 }
 
 function eliminatedForPhase(phase,games){
-  if(phase==="postseason")return state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat))].map(participantKey)):new Set();
+  if(phase==="postseason")return state.config.tournamentFormat?new Set([...eliminatedPostseasonPlayers(postseasonSchedule(state.config.postseasonQualifiers||[],games,state.config.tournamentFormat,state.config.postseasonMatchups))].map(participantKey)):new Set();
   // Rendering must work before a published league or a complete draft is loaded.
   let participants;
   try{participants=[...configuredRoster(state.config).values()];}catch{return new Set();}

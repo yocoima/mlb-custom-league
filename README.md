@@ -165,6 +165,12 @@ Al cerrar la ronda regular, muestra los clasificados oficiales archivados; la po
 
 Los partidos de postemporada no modifican las posiciones ni los acumulados regulares. Desde el cierre de la ronda, **Campeones** muestra sus lideratos y mantiene el campeón como **por definir**, mientras el panel dorado conserva al último campeón oficial vigente. Al finalizar el torneo, esa misma entrada se completa con el nuevo campeón y los lideratos de postemporada. La numeración histórica es ascendente y no cambia cuando se agrega un torneo nuevo.
 
+## Cuadro oficial y eliminados de postemporada
+
+En **Configuración → Cuadro oficial de postemporada** se pueden definir los rivales de cada cruce inicial después de seleccionar los clasificados. Los ganadores de cruces consecutivos (1–2, 3–4…) se enfrentan en la siguiente ronda. Guardar aplica en el navegador; **Publicar liga** comparte el cuadro con la clave privada. Cada clasificado debe aparecer exactamente una vez. Los torneos sin un cuadro explícito conservan sus cruces automáticos por posiciones.
+
+La tabla de postemporada tacha automáticamente al perdedor cuando el rival alcanza las victorias necesarias de su serie: al mejor de tres, dos victorias (2–0 o 2–1). Un 1–1 no elimina a nadie. Se usa el cuadro completo para avanzar ganadores y detectar eliminaciones en semifinales y final; no se calcula la eliminación a partir de las derrotas acumuladas de toda la postemporada. Los resultados excluidos y las correcciones de marcador recalculan el tachado automáticamente.
+
 ## Correcciones administrativas
 
 El botón **Corregir datos** permite:

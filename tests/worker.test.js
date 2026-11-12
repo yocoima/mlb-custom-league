@@ -92,6 +92,19 @@ test("POST /api/league exige la clave privada",async()=>{
   assert.equal(response.status,401);
 });
 
+test("publication preserves official postseason matchups and rejects duplicate players",async()=>{
+  const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"},data=snapshot();
+  data.config.phase="postseason";data.config.postseasonQualifiers=["commissioner","friend"];
+  data.config.postseasonMatchups=[["commissioner","friend"]];
+  const publish=()=>worker.fetch(new Request("https://worker.example/api/leagues/copa",{method:"POST",headers:{Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
+  assert.equal((await publish()).status,200);
+  const saved=await(await worker.fetch(new Request("https://worker.example/api/leagues/copa"),env)).json();
+  assert.deepEqual(saved.config.postseasonMatchups,data.config.postseasonMatchups);
+  data.config.postseasonMatchups=[["friend","friend"]];
+  assert.equal((await publish()).status,400);
+  assert.deepEqual((await(await worker.fetch(new Request("https://worker.example/api/leagues/copa"),env)).json()).config.postseasonMatchups,[["commissioner","friend"]]);
+});
+
 test("publica con autorización y permite lectura pública",async()=>{
   const env={LEAGUE_STORE:mockKv(),LEAGUE_PUBLISH_TOKEN:"private-token"};
   const published=await worker.fetch(new Request("https://worker.example/api/league",{

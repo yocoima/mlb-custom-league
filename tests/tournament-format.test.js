@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups } from "../src/tournament-format.js";
+import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups, validatePostseasonMatchups } from "../src/tournament-format.js";
 
 const format={gamesPerOpponent:2,qualifierCount:4,postseasonBestOf:3,finalBestOf:5};
 const participants=["A","B","C","D"].map(username=>({username,team:"Dodgers"}));
@@ -79,6 +79,31 @@ test("eight qualifiers get a stable seeded bracket",()=>{
   const rounds=postseasonSchedule(["A","B","C","D","E","F","G","H"],[],{...format,qualifierCount:8});
   assert.deepEqual(rounds[0].series.map(s=>[s.a.username,s.b.username]),[["A","H"],["D","E"],["B","G"],["C","F"]]);
   assert.equal(rounds.length,3);
+});
+
+test("official first-round matchups override standings seeds and advance into their fixed semifinal",()=>{
+  const qualifiers=["Johan","Petare","Yocoima","Gabo","Angelotti","Hamudi","Ley","Yermain"];
+  const matchups=[["Johan","Ley"],["Yocoima","Angelotti"],["Petare","Yermain"],["Gabo","Hamudi"]];
+  const bestOfThree={...format,qualifierCount:8,postseasonBestOf:3,finalBestOf:3};
+  const games=[game(1,"Johan","Ley"),game(2,"Johan","Ley"),game(3,"Yocoima","Angelotti"),game(4,"Yocoima","Angelotti"),game(5,"Petare","Yermain"),game(6,"Petare","Yermain"),game(7,"Hamudi","Gabo"),game(8,"Gabo","Hamudi"),game(9,"Hamudi","Gabo"),game(10,"Johan","Yocoima"),game(11,"Johan","Yocoima"),game(12,"Petare","Hamudi")];
+  const first=postseasonSchedule(qualifiers,games.slice(0,1),bestOfThree,matchups);
+  assert.deepEqual([...eliminatedPostseasonPlayers(first)],[]);
+  const split=postseasonSchedule(qualifiers,games.slice(0,8),bestOfThree,matchups);
+  assert.equal(eliminatedPostseasonPlayers(split).has("Gabo"),false);
+  assert.equal(eliminatedPostseasonPlayers(split).has("Hamudi"),false);
+  const rounds=postseasonSchedule(qualifiers,games,bestOfThree,matchups);
+  assert.deepEqual(rounds[0].series.map(match=>[match.a.username,match.b.username]),matchups);
+  assert.deepEqual(rounds[1].series.map(match=>[match.a.username,match.b.username]),[["Johan","Yocoima"],["Petare","Hamudi"]]);
+  assert.deepEqual([...eliminatedPostseasonPlayers(rounds)].sort(),["Angelotti","Gabo","Ley","Yermain","Yocoima"].sort());
+  assert.equal(rounds[1].series[1].winner,null);
+  // Removing one deciding result removes that elimination as well.
+  assert.equal(eliminatedPostseasonPlayers(postseasonSchedule(qualifiers,games.filter(g=>g.id!==11),bestOfThree,matchups)).has("Yocoima"),false);
+});
+
+test("official matchups reject duplicate or unknown participants and incomplete pairs",()=>{
+  const qualifiers=["A","B","C","D"];
+  assert.deepEqual(validatePostseasonMatchups(qualifiers,[["a","d"],["b","c"]]),[["A","D"],["B","C"]]);
+  for(const matchups of [[["A","B"]],[["A","B"],["A","C"]],[["A","B"],["C","X"]],[["A"],["B","C","D"]]])assert.throws(()=>validatePostseasonMatchups(qualifiers,matchups));
 });
 
 test("only unresolved series with both opponents appear as pending and losers are eliminated",()=>{

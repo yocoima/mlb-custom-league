@@ -381,6 +381,20 @@ test("regular standings mark participants outside the archived qualifier list",(
   assert.equal(run('eliminatedForPhase("regular",[]).has("home")'),false);
 });
 
+test("postseason strikeouts use official matchups and two series wins rather than total losses",()=>{
+  const {run}=appContext();
+  run(`
+    state.config.tournamentFormat={gamesPerOpponent:1,qualifierCount:4,postseasonBestOf:3,finalBestOf:3};
+    state.config.postseasonQualifiers=["A","B","C","D"];
+    state.config.postseasonMatchups=[["A","B"],["C","D"]];
+    const results=[{id:"1",date:"2026-09-01",homeUser:"A",awayUser:"B",homeScore:3,awayScore:1},{id:"2",date:"2026-09-02",homeUser:"B",awayUser:"A",homeScore:1,awayScore:3}];
+  `);
+  assert.equal(run('eliminatedForPhase("postseason",results.slice(0,1)).has("b")'),false);
+  assert.equal(run('eliminatedForPhase("postseason",results).has("b")'),true);
+  assert.equal(run('eliminatedForPhase("postseason",results).has("a")'),false);
+  assert.equal(run('eliminatedForPhase("postseason",results).has("d")'),false);
+});
+
 test("closing regular season suggests configured number and rejects another selection",async()=>{
   const {run,context,elements}=appContext();
   run('state.config.tournamentFormat={gamesPerOpponent:1,qualifierCount:2,postseasonBestOf:3,finalBestOf:5};state.participants=new Map(["home","away","third","fourth"].map(username=>[username,{username,team:"Tigers"}]));state.games.set("one",{id:"one",homeUser:"home",awayUser:"away",homeScore:2,awayScore:1,phase:"regular"});state.stats.loadedGameIds.add("one");openCloseRegular();');

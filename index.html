@@ -164,6 +164,12 @@
           </div>
           <p>Guardar aplica en este navegador. Usa Publicar liga para compartir el formato con los participantes.</p>
         </fieldset>
+        <fieldset id="postseasonMatchupsSettings" class="format-settings hidden">
+          <legend>Cuadro oficial de postemporada</legend>
+          <p id="postseasonSeriesRule"></p>
+          <p>Define los rivales de cada cruce inicial. Los ganadores de cruces consecutivos (1 y 2, 3 y 4…) se enfrentan en la siguiente ronda. Guarda y publica con la clave privada para compartir el cuadro.</p>
+          <div id="postseasonMatchupsFields"></div>
+        </fieldset>
         <label>Roster inicial de la liga (JSON: usuario → equipo)
           <textarea id="roster" rows="12" spellcheck="false" required placeholder='{
   "yocoima_herrera": "Tigers",
@@ -231,6 +237,6 @@
   </dialog>
 
   <footer>Proyecto independiente · No afiliado a MLB, Sony ni San Diego Studio.</footer>
-  <script type="module" src="app.js?v=4.6.2"></script>
+  <script type="module" src="app.js?v=4.6.3"></script>
 </body>
 </html>

@@ -53,11 +53,29 @@ export function pendingMatchupGroups(schedule) {
 }
 
 // Standard seeded bracket: 1–4 / 2–3, or 1–8 / 4–5 / 2–7 / 3–6.
-export function postseasonSchedule(qualifiers, games, format) {
+export function validatePostseasonMatchups(qualifiers,matchups){
+  if(matchups==null)return null;
+  if(!Array.isArray(matchups)||matchups.length*2!==qualifiers.length)throw new Error("Configura un cruce por cada dos clasificados.");
+  const seen=new Set();
+  return matchups.map(pair=>{
+    if(!Array.isArray(pair)||pair.length!==2)throw new Error("Cada cruce debe tener dos participantes.");
+    return pair.map(name=>{
+      const canonical=qualifiers.find(username=>sameText(username,name));
+      if(!canonical)throw new Error("Los cruces solo pueden incluir participantes clasificados.");
+      const key=canonical.toLowerCase();
+      if(seen.has(key))throw new Error(`El participante ${canonical} está repetido en los cruces.`);
+      seen.add(key);return canonical;
+    });
+  });
+}
+
+export function postseasonSchedule(qualifiers, games, format, matchups=null) {
   if (qualifiers.length!==format.qualifierCount) return [];
+  const official=validatePostseasonMatchups(qualifiers,matchups);
   let seeds=[1,2];
   while(seeds.length<qualifiers.length){const size=seeds.length*2;seeds=seeds.flatMap(seed=>[seed,size+1-seed]);}
-  let slots=seeds.map(seed=>({username:qualifiers[seed-1],label:`#${seed} ${qualifiers[seed-1]}`,after:0}));
+  const ordered=official?official.flat():seeds.map(seed=>qualifiers[seed-1]);
+  let slots=ordered.map(username=>({username,label:`#${qualifiers.indexOf(username)+1} ${username}`,after:0}));
   const sorted=uniqueGames(games).sort((a,b)=>(parseShowDate(a.date)?.getTime()||0)-(parseShowDate(b.date)?.getTime()||0));
   const rounds=[];
   while(slots.length>1){
