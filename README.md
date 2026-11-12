@@ -137,6 +137,10 @@ El Worker limita cada actualización pública a 25 candidatos y nunca confía en
 
 Las consultas de Game Log comprueban el contenido además del estado HTTP: un error con HTTP 200 no interrumpe la búsqueda del registro del rival. Las respuestas `pending`/HTTP 202 se reintentan hasta tres veces respetando una espera de entre 1 y 5 segundos. Estas consultas no usan caché para evitar conservar errores o registros todavía en preparación. Si quedan incidencias, la actualización muestra sus advertencias en lugar de informar que todo está al día.
 
+**Incluir juego** también prueba todos los registros disponibles de ambos participantes. Si la API no entrega ningún Game Log válido, el comisionado puede confirmar una inclusión de **solo el resultado**, con su clave privada y una confirmación adicional: el mismo partido, equipos, fecha, marcador y decisión W/L deben coincidir en los dos historiales oficiales. Sin Game Log no se pueden verificar innings ni obtener estadísticas de jugadores; por eso el juego queda señalado como **estadísticas pendientes**, sin inventar un UUID ni completar estadísticas con ceros.
+
+**Actualizar liga** reintenta esos resultados aunque ya hayan salido de la ventana de escaneo. Cuando se obtiene un Game Log válido, sustituye el registro pendiente sin duplicar el partido, incorpora las estadísticas y conserva la auditoría y las correcciones. Los IDs de ambos historiales también impiden publicar el mismo juego en otro torneo. Los errores de lectura muestran el mensaje de la API en lugar de ocultarlo detrás de un HTTP 502 genérico.
+
 ## Administrar varios torneos
 
 Para borrar un torneo creado por error, selecciónalo y abre **Configuración → Eliminar liga**. Confirma el nombre e identificador y escribe la clave privada si está publicado. Se eliminan su snapshot (partidos, estadísticas e historial) y su entrada en el selector para todos; los demás torneos se conservan. Los borradores sin publicar se eliminan solamente de este navegador. La eliminación es permanente y puede tardar aproximadamente 60 segundos en propagarse.

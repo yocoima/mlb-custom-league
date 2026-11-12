@@ -31,9 +31,10 @@ import { sortStatRows } from "./src/update-review.js?v=4.3.0";
 import { tournamentFormat, regularSchedule, postseasonSchedule, pendingPostseasonRounds, eliminatedPostseasonPlayers, pendingMatchupGroups, validatePostseasonMatchups } from "./src/tournament-format.js?v=4.6.3";
 import { regularEliminatedPlayers } from "./src/qualification.js?v=4.5.3";
 import { qualificationCalculator } from "./src/calculator.js?v=4.6.0";
-import { fetchReadyGameLog } from "./src/game-log.js?v=4.6.2";
+import { fetchReadyGameLog } from "./src/game-log.js?v=4.7.1";
 import {createRosterEditor,rosterToRows,rowsToRoster,fillCommissionerSelect} from "./src/roster-editor.js?v=4.7.0";
 import {createLeagueSetup} from "./src/league-setup.js?v=4.7.0";
+import {gameRecords,shareGameRecord,confirmHistoryGame} from "./src/manual-game.js?v=4.7.1";
 
 const $ = s => document.querySelector(s);
 const STORAGE_KEY = "mlb26_custom_league_config_v3";
@@ -135,6 +136,7 @@ function applyPublishedSnapshot(snapshot){
   state.dataSeasonKey=seasonConfigKey(state.config);
   state.viewPhase=activePhase();
   state.warnings=[];
+  if(snapshot.games.some(game=>game.pendingGameLog))state.warnings.push("Hay resultados incluidos por el comisionado con Game Log y estadísticas pendientes. Se reintentarán al actualizar la liga.");
   if(state.config.regularSeason)refreshRegularArchiveDerived();
   saveConfig();saveState();fillForm();render();
 }
@@ -376,7 +378,7 @@ async function refreshSharedLeague(){
     if(response.status===409)throw new Error("Otro usuario actualizó la liga mientras trabajabas. Recarga la página y pulsa Actualizar liga nuevamente.");
     throw new Error(result.error||`No se pudo actualizar la liga pública (HTTP ${response.status}).`);
   }
-  const added=Number(result.refresh?.added||0),rejected=Number(result.refresh?.rejected||0);
+  const added=Number(result.refresh?.added||0),updated=Number(result.refresh?.updated||0),rejected=Number(result.refresh?.rejected||0);
   applyPublishedSnapshot(result);
   for(const message of scanWarnings)warn(message);
   for(const game of submitted)if(!state.games.has(gameKey(game)))recordDiscard(game,"Rechazado por validación oficial del servidor o asignado a otro torneo",true,true);
@@ -384,7 +386,7 @@ async function refreshSharedLeague(){
   if(crossLeagueRejected)warn(`${crossLeagueRejected} partido${crossLeagueRejected===1?"":"s"} ya pertenec${crossLeagueRejected===1?"e":"en"} a otro torneo y no se ${crossLeagueRejected===1?"agregó":"agregaron"}.`);
   if(rejected-crossLeagueRejected>0)warn(`${rejected-crossLeagueRejected} partidos candidatos no superaron la validación oficial del servidor.`);
   const partial=scanWarnings.length>0||rejected>0;
-  setStatus(added?`Liga pública actualizada: ${added} partido${added===1?"":"s"} nuevo${added===1?"":"s"} y estadísticas recalculadas.${partial?" Hay incidencias pendientes; revisa las advertencias y los descartados.":""}`:partial?"Actualización parcial: no se agregaron juegos. Revisa las advertencias y los descartados.":"La liga pública ya estaba al día.",partial?"":"success");
+  setStatus(added||updated?`Liga pública actualizada: ${added} partidos nuevos${updated?` · ${updated} resultados con Game Log y estadísticas recuperados`:""}.${partial?" Hay incidencias pendientes; revisa las advertencias y los descartados.":""}`:partial?"Actualización parcial: no se agregaron juegos. Revisa las advertencias y los descartados.":"La liga pública ya estaba al día.",partial?"":"success");
 }
 
 async function fetchAllHistory(username, platform, maxPages, onProgress = () => {}, since = 0) {
@@ -651,23 +653,47 @@ async function includeDiscardedGame(key){
   const latest=await fetchJson(leagueApiUrl());
   if(latest.publishedAt!==state.publishedAt)throw new Error("La liga cambió. Cierra esta ventana y actualiza antes de incluir el juego.");
   const source=item.game;
-  const payload=await fetchGameLog(source.id,source.sourceUser,"psn"),{lineScore}=gameParts(payload);
-  if(!lineScore||String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")throw new Error("Solo se pueden incluir partidos con Game Log LEAGUE verificado.");
-  const uuid=cleanDisplayName(lineScore.game_uuid);
-  if(!uuid)throw new Error("El Game Log no tiene UUID para evitar duplicados.");
-  const homeScore=Number(lineScore.home_runs),awayScore=Number(lineScore.away_runs);
-  if(!Number.isFinite(homeScore)||!Number.isFinite(awayScore)||homeScore<0||awayScore<0||homeScore===awayScore)throw new Error("El juego debe tener un marcador válido y un ganador.");
-  const game={...source,uuid,dedupKey:`uuid:${uuid}`,homeScore,awayScore,homeResult:homeScore>awayScore?"W":"L",awayResult:awayScore>homeScore?"W":"L",phase:activePhase(),manualInclusion:{reason:item.reason,createdAt:new Date().toISOString()}};
+  let payload=null,usedRecord=null,records=gameRecords(source),confirmed=null;
+  const attempted=new Set();
+  const tryRecords=async()=>{for(const record of records){const key=`${record.username.toLowerCase()}:${record.id}`;if(attempted.has(key))continue;attempted.add(key);try{payload=await fetchGameLog(record.id,record.username,"psn");usedRecord=record;return;}catch{}}};
+  await tryRecords();
+  if(!payload){
+    const histories=[];
+    for(const username of [source.homeUser,source.awayUser])histories.push({username,rows:await fetchAllHistory(username,"psn",state.config.maxPages,()=>{},(parseShowDate(source.date)?.getTime()||0)-1000)});
+    confirmed=confirmHistoryGame(source,histories);records=mergeApiRecords(records,confirmed.apiRecords);await tryRecords();
+  }
+  let game;
+  if(payload){
+    const {lineScore}=gameParts(payload);
+    if(!lineScore||String(lineScore.game_mode||"").toUpperCase()!=="LEAGUE")throw new Error("Solo se pueden incluir partidos con Game Log LEAGUE verificado.");
+    for(const side of ["home","away"]){
+      const known=state.participants.get(participantKey(source[`${side}User`]));
+      if(lineScore[`${side}_full_name`]&&!sameText(lineScore[`${side}_full_name`],source[`${side}Team`])||known?.playerId&&lineScore[`${side}_player_id`]&&String(known.playerId)!==String(lineScore[`${side}_player_id`]))throw new Error("El Game Log recuperado no corresponde a los equipos o participantes de este partido. No se incluyó.");
+    }
+    const uuid=cleanDisplayName(lineScore.game_uuid);
+    if(!uuid)throw new Error("El Game Log no tiene UUID para evitar duplicados.");
+    const homeScore=Number(lineScore.home_runs),awayScore=Number(lineScore.away_runs);
+    if(!Number.isFinite(homeScore)||!Number.isFinite(awayScore)||homeScore<0||awayScore<0||homeScore===awayScore)throw new Error("El juego debe tener un marcador válido y un ganador.");
+    game={...source,id:usedRecord.id,sourceUser:usedRecord.username,apiRecords:records,uuid,dedupKey:`uuid:${uuid}`,homeScore,awayScore,homeResult:cleanDisplayName(lineScore.home_display_result)|| (homeScore>awayScore?"W":"L"),awayResult:cleanDisplayName(lineScore.away_display_result)||(awayScore>homeScore?"W":"L"),pendingGameLog:false};
+  }else{
+    if(!window.confirm(`La API no entrega el Game Log, pero ambos historiales oficiales confirman: ${confirmed.awayUser} ${confirmed.awayScore}–${confirmed.homeScore} ${confirmed.homeUser} (${confirmed.date}). ¿Incluir solo el resultado? Las estadísticas quedarán pendientes y se reintentarán al actualizar. No se pueden verificar las entradas sin Game Log.`))return;
+    game=confirmed;
+  }
+  game={...game,phase:activePhase(),manualInclusion:{reason:item.reason,createdAt:new Date().toISOString(),source:payload?"game-log":"history"}};
   const roster=configuredRoster(state.config);
   for(const side of ["home","away"]){
     const member=rosterMemberForName(game[`${side}User`],roster);
     if(!member)throw new Error("Agrega primero al participante faltante en el roster y vuelve a actualizar.");
     game[`${side}User`]=member.username;
   }
-  if(state.games.has(gameKey(game)))throw new Error("Este juego ya está incluido.");
+  const existing=[...state.games.values()].find(old=>gameKey(old)===gameKey(game)||old.uuid&&old.uuid===game.uuid||shareGameRecord(old,game)||gameFingerprint(old)===gameFingerprint(game));
+  if(existing&&(!existing.pendingGameLog||game.pendingGameLog))throw new Error("Este juego ya está incluido.");
+  if(existing)game.dedupKey=gameKey(existing);
   try{
-    state.games.set(gameKey(game),game);addGameStats(state.stats,game,payload);
+    if(existing){state.games.delete(gameKey(existing));state.stats.failedGameIds.delete(existing.id);}
+    state.games.set(gameKey(game),game);if(payload)addGameStats(state.stats,game,payload);else state.stats.failedGameIds.add(game.id);
     await publishLeague(token);saveState();render();updateReview.added.push(game);updateReview.discarded.delete(key);showUpdateReview();
+    if(game.pendingGameLog){warn("Resultado incluido por el comisionado, confirmado en ambos historiales. Game Log y estadísticas pendientes.");$("#updateReviewStatus").textContent="Resultado incluido y publicado. Las estadísticas quedan pendientes hasta que la API entregue un Game Log válido.";}
   }catch(error){applyPublishedSnapshot(previous);throw error;}
 }
 
@@ -760,6 +786,11 @@ async function discoverLeague(){
 
 
 
+  for(const game of state.games.values())if(game.pendingGameLog&&gamePhase(game)===activePhase()){
+    const key=gameFingerprint(game),group=candidateGroups.get(key)||[];
+    for(const record of gameRecords(game))if(!group.some(candidate=>candidate.record.id===record.id&&sameText(candidate.record.username,record.username)))group.push({game,record});
+    candidateGroups.set(key,group);
+  }
   let checked=0;
   let failedLogs=0;
   let excludedByInnings=0;
@@ -769,24 +800,24 @@ async function discoverLeague(){
   for(const [fingerprint,candidates] of candidateGroups){
     checked++;
     const knownGame=candidates.map(candidate=>existingByRecord.get(`${candidate.record.id}|${participantKey(candidate.record.username)}`)).find(Boolean)||existingByFingerprint.get(fingerprint);
-    if(knownGame){
+    if(knownGame&&!knownGame.pendingGameLog){
       finishCandidates(candidates);
       knownGame.apiRecords=mergeApiRecords(knownGame.apiRecords,candidates.map(candidate=>candidate.record));
       continue;
     }
     setStatus(`Validando partidos y UUID: ${checked}/${candidateGroups.size}…`);
-    let payload=null;
+    let payload=null,logError="";
     let usedCandidate=candidates[0];
     for(const candidate of candidates){
       try{
         payload=await fetchGameLog(candidate.record.id,candidate.record.username,"psn");
         usedCandidate=candidate;
         break;
-      }catch{}
+      }catch(error){logError=error.message;}
     }
     const {lineScore}=payload?gameParts(payload):{lineScore:null};
     if(!lineScore){
-      recordDiscard({...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase()},"Game Log no disponible; no se pudo validar el partido",true,true);
+      recordDiscard({...usedCandidate.game,sourceUser:usedCandidate.record.username,sourcePlatform:"psn",phase:activePhase(),apiRecords:candidates.map(candidate=>candidate.record)},`Game Log no disponible; ${logError||"no se pudo validar el partido"}`,true,true);
       failedLogs++;
       continue;
     }
@@ -806,7 +837,7 @@ async function discoverLeague(){
       continue;
     }
     const uuid=cleanDisplayName(lineScore?.game_uuid);
-    const dedupKey=uuid?`uuid:${uuid}`:`fingerprint:${fingerprint}`;
+    const dedupKey=knownGame?.pendingGameLog?gameKey(knownGame):uuid?`uuid:${uuid}`:`fingerprint:${fingerprint}`;
     const records=candidates.map(candidate=>candidate.record);
     const game={
       ...usedCandidate.game,
@@ -817,6 +848,8 @@ async function discoverLeague(){
       apiRecords:records,
       sourceUser:usedCandidate.record.username,
       sourcePlatform:"psn",
+      pendingGameLog:false,
+      ...(knownGame?.manualInclusion?{manualInclusion:knownGame.manualInclusion}:{}),
       homePlayerId:lineScore?.home_player_id?String(lineScore.home_player_id):null,
       awayPlayerId:lineScore?.away_player_id?String(lineScore.away_player_id):null,
       homeScore:lineScore?.home_runs!=null?Number(lineScore.home_runs):usedCandidate.game.homeScore,
@@ -826,8 +859,9 @@ async function discoverLeague(){
       ruling:cleanDisplayName(lineScore?.ruling||usedCandidate.game.ruling||"0")
     };
     if(lineScore&&!bindParticipantIds(game,lineScore)){recordDiscard(game,"Identidad de participante inconsistente",true,true);continue;}
+    if(knownGame?.pendingGameLog)state.stats.failedGameIds.delete(knownGame.id);
     const existing=state.games.get(dedupKey);
-    if(existing)existing.apiRecords=mergeApiRecords(existing.apiRecords,records);
+    if(existing&&!existing.pendingGameLog)existing.apiRecords=mergeApiRecords(existing.apiRecords,records);
     else state.games.set(dedupKey,game);
   }
 
@@ -847,8 +881,9 @@ async function mapLimit(items,limit,fn){
 
 async function loadStats(){
   const allGames=rawGamesForPhase(activePhase()); if(!allGames.length) throw new Error("Primero actualiza la fase actual.");
-  const games=allGames.filter(game=>!state.stats.loadedGameIds.has(game.id));
-  if(!games.length){render();setStatus(`Las estadísticas ya están al día para ${allGames.length}/${allGames.length} partidos.`,"success");return;}
+  const pending=allGames.filter(game=>game.pendingGameLog);
+  const games=allGames.filter(game=>!game.pendingGameLog&&!state.stats.loadedGameIds.has(game.id));
+  if(!games.length){render();setStatus(pending.length?"Hay resultados con estadísticas pendientes. Usa Actualizar liga para recuperar sus Game Logs.":`Las estadísticas ya están al día para ${allGames.length}/${allGames.length} partidos.`,pending.length?"":"success");return;}
   let done=0;
   await mapLimit(games,4,async game=>{
     state.stats.failedGameIds.delete(game.id);
@@ -1182,7 +1217,7 @@ function render(){
     const decidedEarly=String(g.ruling||"0")!=="0";
     const winner=g.homeResult==="W"?g.homeUser:g.awayResult==="W"?g.awayUser:"";
     const decision=decidedEarly&&winner?` · Decisión oficial: ${esc(winner)} gana (ruling ${esc(g.ruling)})`:"";
-    return `<article class="game-card"><div><div><span class="manager">${esc(g.awayUser)}</span> · <strong>${esc(g.awayTeam)}</strong> <span class="muted">@</span> <span class="manager">${esc(g.homeUser)}</span> · <strong>${esc(g.homeTeam)}</strong></div><div class="meta">${esc(g.date||"Fecha no disponible")} · ${g.uuid?`UUID ${esc(g.uuid)}`:`ID ${esc(g.id)} (sin UUID)`}${g.pitcherInfo?` · ${esc(g.pitcherInfo)}`:""}${decision}${g.corrected?` · Corrección: ${esc(g.correctionReason)}`:""}</div></div><div class="score">${g.awayScore??"—"} — ${g.homeScore??"—"}${decidedEarly?"*":""}</div></article>`;
+    return `<article class="game-card"><div><div><span class="manager">${esc(g.awayUser)}</span> · <strong>${esc(g.awayTeam)}</strong> <span class="muted">@</span> <span class="manager">${esc(g.homeUser)}</span> · <strong>${esc(g.homeTeam)}</strong></div><div class="meta">${esc(g.date||"Fecha no disponible")} · ${g.uuid?`UUID ${esc(g.uuid)}`:`ID ${esc(g.id)} (sin UUID)`}${g.pitcherInfo?` · ${esc(g.pitcherInfo)}`:""}${decision}${g.corrected?` · Corrección: ${esc(g.correctionReason)}`:""}${g.pendingGameLog?" · Resultado confirmado por ambos historiales; estadísticas pendientes":""}</div></div><div class="score">${g.awayScore??"—"} — ${g.homeScore??"—"}${decidedEarly?"*":""}</div></article>`;
   }).join(""):`<div class="empty">Sin datos.</div>`;
 
   const bat=filteredStatRows(sortedStats(stats,"batting"),"batting");
@@ -1204,7 +1239,7 @@ async function syncLeague(full=false){
     state.config=formToConfig();saveConfig();beginScan(full);$("#syncBtn").disabled=true;$("#fullScanBtn").disabled=true;$("#statsBtn").disabled=true;
     await discoverLeague();if(rawGamesForPhase(activePhase()).length)await loadStats();await refreshSharedLeague();
     updateReview.added=[...state.games.values()].filter(game=>!updateReview.before.has(gameKey(game)));
-    for(const game of state.games.values())finishCandidates((game.apiRecords||[]).map(record=>({record})));
+    for(const game of state.games.values())if(!game.pendingGameLog)finishCandidates((game.apiRecords||[]).map(record=>({record})));
     localStorage.setItem(scanSession.key,JSON.stringify({participants:scanSession.participants,discarded:scanSession.discarded}));
     updateReview.complete=true;
   }catch(e){applyPublishedSnapshot(previous);setStatus(e.message,"error");updateReview.error=e.message;}

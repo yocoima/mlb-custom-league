@@ -5,6 +5,7 @@ import vm from "node:vm";
 import * as format from "../src/tournament-format.js";
 import * as qualification from "../src/qualification.js";
 import * as calculator from "../src/calculator.js";
+import * as manualGame from "../src/manual-game.js";
 import * as core from "../src/league-core.js";
 import { sortStatRows } from "../src/update-review.js";
 import {fetchReadyGameLog} from "../src/game-log.js";
@@ -13,7 +14,7 @@ function appContext() {
   const elements = new Map();
   const storage = new Map();
   const context = vm.createContext({
-    ...core, ...format, ...qualification, ...calculator, sortStatRows, URLSearchParams, structuredClone,
+    ...core, ...format, ...qualification, ...calculator, ...manualGame, sortStatRows, URLSearchParams, structuredClone,
     location: { search: "" },
     localStorage: { getItem: key => storage.get(key)||null, setItem(key,value) {storage.set(key,value);} },
     document: { querySelector(selector) {
@@ -166,6 +167,51 @@ test("manual inclusion rejects non-LEAGUE logs and rolls back a failed publicati
   assert.equal(run("state.games.size"),0);
   assert.equal(run("state.publishedAt"),"version-one");
   assert.equal(run("updateReview.added.length"),0);
+});
+
+test("manual inclusion tries every stored source record",async()=>{
+  const {run}=appContext();
+  run(`
+    recordDiscard({id:"1",sourceUser:"home",homeUser:"home",awayUser:"away",homeTeam:"Tigers",awayTeam:"Dodgers",homeScore:2,awayScore:1,apiRecords:[{id:"1",username:"home"},{id:"2",username:"away"}]},"Log unavailable");
+    fetchJson=async()=>({publishedAt:"version-one"});
+    const tried=[];fetchGameLog=async(id)=>{tried.push(id);if(id==="1")throw Error("API error");return {game:[["line_score",{game_mode:"LEAGUE",game_uuid:"recovered",home_runs:2,away_runs:1}]]};};
+    publishLeague=async()=>({ok:true});
+  `);
+  await run("includeDiscardedGame([...updateReview.discarded.keys()][0])");
+  assert.deepEqual(Array.from(run("tried")),["1","2"]);assert.equal(run('state.games.get("uuid:recovered").id'),"2");
+});
+
+test("manual history-only result is explicit, auditable and has no fabricated player stats",async()=>{
+  const {run,context}=appContext();context.window.confirm=()=>true;
+  run(`
+    renderWarnings=()=>{};
+    const source={id:"1",sourceUser:"home",homeUser:"home",awayUser:"away",homeTeam:"Tigers",awayTeam:"Dodgers",homeScore:2,awayScore:1,date:"08/24/2026 10:00:00"};
+    recordDiscard(source,"Game Log unavailable");fetchJson=async()=>({publishedAt:"version-one"});fetchGameLog=async()=>{throw Error("API failure")};
+    fetchAllHistory=async username=>[{id:username==="home"?"1":"2",game_mode:"LEAGUE",home_name:"home",away_name:"away",home_full_name:"Tigers",away_full_name:"Dodgers",home_runs:2,away_runs:1,home_display_result:"W",away_display_result:"L",display_date:source.date}];
+    publishLeague=async()=>({ok:true});
+  `);
+  context.window.confirm=()=>false;
+  await run("includeDiscardedGame([...updateReview.discarded.keys()][0])");
+  assert.equal(run("state.games.size"),0);
+  context.window.confirm=()=>true;
+  await run("includeDiscardedGame([...updateReview.discarded.keys()][0])");
+  assert.equal(run("state.games.size"),1);assert.equal(run("[...state.games.values()][0].pendingGameLog"),true);
+  assert.equal(run("[...state.games.values()][0].manualInclusion.source"),"history");
+  assert.equal(run("state.stats.loadedGameIds.size"),0);assert.equal(run("state.stats.failedGameIds.size"),1);
+  assert.equal(run("state.stats.batting.size"),0);
+});
+
+test("pending manual results recover logs even after histories leave the scan overlap",async()=>{
+  const {run}=appContext();setupScan(run);
+  run(`
+    const provisional={...normalizeForParticipant(raw,{username:"home",team:"Tigers"}),id:"1",sourceUser:"home",dedupKey:"history:stable",uuid:null,pendingGameLog:true,phase:"regular",apiRecords:[{id:"1",username:"home"},{id:"2",username:"away"}]};
+    state.games.set("history:stable",provisional);state.stats.failedGameIds.add("1");state.dataSeasonKey=seasonConfigKey(state.config);
+    fetchHistoryPage=async()=>({total_pages:1,games:[]});
+    fetchGameLog=async()=>({game:[["line_score",{game_mode:"LEAGUE",game_uuid:"ready",innings:5,home_runs:2,away_runs:1,home_display_result:"W",away_display_result:"L"}]]});
+  `);
+  await run("discoverLeague()");
+  assert.equal(run("state.games.size"),1);assert.equal(run('state.games.get("history:stable").uuid'),"ready");
+  assert.equal(run('state.games.get("history:stable").pendingGameLog'),false);assert.equal(run("state.stats.failedGameIds.size"),0);
 });
 
 

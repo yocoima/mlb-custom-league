@@ -200,6 +200,35 @@ test("POST /api/league/refresh agrega solo juegos verificados y sus estadística
   assert.equal(saved.stats.pitching[0][1].sv,1);
 });
 
+test("refresh upgrades a history-only result in place and keeps its audit and correction keys",async t=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot(),key="history:commissioner:2,friend:3";
+  current.publishedAt="old";
+  const pending={...postseasonCandidate(current).games.at(-1),uuid:null,dedupKey:key,pendingGameLog:true,phase:"regular",manualInclusion:{source:"history",reason:"Confirmed by both histories"}};
+  current.games.push(pending);current.stats.failedGameIds=["2"];
+  current.config.corrections=[{id:"audit",type:"result",phase:"regular",gameKey:key,homeScore:4,awayScore:1,reason:"Correction"}];
+  await kv.put("league:copa",JSON.stringify(current));
+  const incoming=structuredClone(current);incoming.games.at(-1).uuid="postseason-uuid";incoming.games.at(-1).pendingGameLog=false;
+  const payload=postseasonGameLog();payload.game[1][1]=[{team_id:"7",team_name:"Tigers","7":{batting_stats:[],pitching_stats:[{player_name:"Closer",p_idx:"1",ip:"1.0",h:"0",r:"0",er:"0",bb:"0",so:"2",win:"0",loss:"0",save:"1"}]}}];
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify(payload)));
+  const response=await worker.fetch(new Request("https://worker.example/api/leagues/copa/refresh",{method:"POST",body:JSON.stringify(incoming)}),env);
+  const saved=await response.json();
+  assert.equal(saved.refresh.added,0);assert.equal(saved.refresh.updated,1);assert.equal(saved.games.length,2);
+  assert.equal(saved.games.at(-1).dedupKey,key);assert.equal(saved.games.at(-1).uuid,"postseason-uuid");assert.equal(saved.games.at(-1).pendingGameLog,false);
+  assert.deepEqual(saved.games.at(-1).manualInclusion,pending.manualInclusion);assert.equal(saved.config.corrections[0].gameKey,key);
+  assert.ok(saved.stats.loadedGameIds.includes("2"));assert.ok(!saved.stats.failedGameIds.includes("2"));
+  const repeated=await worker.fetch(new Request("https://worker.example/api/leagues/copa/refresh",{method:"POST",body:JSON.stringify(saved)}),env);
+  const again=await repeated.json();assert.equal(again.games.length,2);assert.deepEqual(again.stats,saved.stats);
+});
+
+test("a history-only result reserves its official records across tournaments without inventing a UUID",async()=>{
+  const kv=mockKv(),env={LEAGUE_STORE:kv,LEAGUE_PUBLISH_TOKEN:"private-token"};
+  const first=snapshot();first.games=[{id:"2",sourceUser:"commissioner",uuid:null,dedupKey:"history:one",pendingGameLog:true,apiRecords:[{id:"2",username:"commissioner"}]}];
+  const publish=(id,data)=>worker.fetch(new Request(`https://worker.example/api/leagues/${id}`,{method:"POST",headers:{Authorization:"Bearer private-token"},body:JSON.stringify(data)}),env);
+  assert.equal((await publish("one",first)).status,200);
+  const second=snapshot();second.games=[{...first.games[0],uuid:"now-ready",pendingGameLog:false}];
+  assert.equal((await publish("two",second)).status,409);
+});
+
 test("refresh acepta una desconexión oficial después de cinco entradas",async t=>{
   const kv=mockKv(),env={LEAGUE_STORE:kv},current=snapshot();
   current.config.regulationInnings=9;

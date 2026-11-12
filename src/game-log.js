@@ -13,8 +13,8 @@ export async function fetchReadyGameLog(url,{fetchImpl=fetch,sleep=ms=>new Promi
       await sleep(Math.max(1,Math.min(5,Number.isFinite(seconds)?seconds:3))*1000);
       continue;
     }
-    if(!response.ok)throw new Error(`Game Log HTTP ${response.status}`);
     if(payload?.error)throw new Error(String(payload.error));
+    if(!response.ok)throw new Error(`Game Log HTTP ${response.status}`);
     if(!gameParts(payload).lineScore)throw new Error("Game Log sin datos de partido.");
     return payload;
   }
